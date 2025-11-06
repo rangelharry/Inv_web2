@@ -94,10 +94,8 @@ class UsuariosManager:
             
             if rows:
                 df = pd.DataFrame([dict(row) for row in rows])  # type: ignore
-                print(f"DEBUG: get_usuarios encontrou {len(df)} usuários")  # type: ignore
                 return df
             else:
-                print(f"DEBUG: get_usuarios não encontrou usuários")  # type: ignore
                 return pd.DataFrame()  # type: ignore
                 
         except Exception as e:
@@ -109,24 +107,16 @@ class UsuariosManager:
         try:
             cursor = self.db.conn.cursor()  # type: ignore
             
-            print(f"DEBUG: ==========================================")  # type: ignore
-            print(f"DEBUG: INICIANDO UPDATE USUÁRIO ID: {usuario_id}")  # type: ignore
-            print(f"DEBUG: Tipo do usuario_id: {type(usuario_id)} - Valor: {repr(usuario_id)}")  # type: ignore
-            print(f"DEBUG: Dados recebidos: {data}")  # type: ignore
-            
             # Converter usuario_id para int se necessário
             try:  # type: ignore
                 usuario_id_int = int(usuario_id)  # type: ignore
-                print(f"DEBUG: ID convertido para int: {usuario_id_int}")  # type: ignore
             except (ValueError, TypeError) as e:  # type: ignore
-                print(f"DEBUG: ERRO ao converter ID para int: {e}")  # type: ignore
                 st.error(f"❌ ID de usuário inválido: {usuario_id}")  # type: ignore
                 return False  # type: ignore
             
             # Primeiro, verificar se o usuário existe ANTES de qualquer operação
             cursor.execute("SELECT id, nome, email FROM usuarios WHERE id = ?", (usuario_id_int,))  # type: ignore
             user_before = cursor.fetchone()  # type: ignore
-            print(f"DEBUG: Usuário ANTES do update: {user_before}")  # type: ignore
             
             if not user_before:  # type: ignore
                 st.error(f"❌ Usuário com ID {usuario_id_int} não encontrado!")  # type: ignore
@@ -158,7 +148,6 @@ class UsuariosManager:
                 password_hash = bcrypt.hashpw(data['nova_senha'].encode('utf-8'), bcrypt.gensalt())  # type: ignore
                 update_parts.append("password_hash = ?")  # type: ignore
                 params.append(password_hash.decode('utf-8'))  # type: ignore
-                print(f"DEBUG: Senha será atualizada")  # type: ignore
             
             if not update_parts:  # type: ignore
                 st.warning("⚠️ Nenhum campo para atualizar.")  # type: ignore
@@ -168,27 +157,20 @@ class UsuariosManager:
             params.append(usuario_id_int)  # Adicionar ID no final  # type: ignore
             query = f"UPDATE usuarios SET {', '.join(update_parts)} WHERE id = ?"  # type: ignore
             
-            print(f"DEBUG: Query final: {query}")  # type: ignore
-            print(f"DEBUG: Parâmetros finais: {params}")  # type: ignore
             
             cursor.execute(query, params)  # type: ignore
             rows_affected = cursor.rowcount  # type: ignore
-            print(f"DEBUG: Linhas afetadas pelo UPDATE: {rows_affected}")  # type: ignore
             
             # Verificar usuário APÓS o update mas ANTES do commit
             cursor.execute("SELECT id, nome, email FROM usuarios WHERE id = ?", (usuario_id_int,))  # type: ignore
             user_after = cursor.fetchone()  # type: ignore
-            print(f"DEBUG: Usuário APÓS update (antes commit): {user_after}")  # type: ignore
             
             # Commit
             self.db.conn.commit()  # type: ignore
-            print(f"DEBUG: COMMIT executado")  # type: ignore
             
             # Verificar usuário APÓS commit
             cursor.execute("SELECT id, nome, email FROM usuarios WHERE id = ?", (usuario_id_int,))  # type: ignore
             user_final = cursor.fetchone()  # type: ignore
-            print(f"DEBUG: Usuário APÓS commit: {user_final}")  # type: ignore
-            print(f"DEBUG: ==========================================")  # type: ignore
             
             if rows_affected > 0:  # type: ignore
                 st.success("✅ Usuário atualizado com sucesso!")  # type: ignore
@@ -199,10 +181,8 @@ class UsuariosManager:
                 
         except Exception as e:
             self.db.conn.rollback()  # type: ignore
-            print(f"DEBUG: ERRO: {str(e)}")  # type: ignore
             st.error(f"Erro ao atualizar usuário: {str(e)}")  # type: ignore
             import traceback  # type: ignore
-            print(f"DEBUG: Traceback: {traceback.format_exc()}")  # type: ignore
             return False
     
     def delete_usuario(self, usuario_id: int, nome: str) -> bool:
@@ -428,7 +408,6 @@ def show_usuarios_page():
                                     st.info("🔐 Nova senha será aplicada...")  # type: ignore
                                 
                                 # Executar atualização
-                                print(f"DEBUG: Enviando dados para update: {update_data}")  # type: ignore
                                 
                                 if manager.update_usuario(user_to_edit['id'], update_data):  # type: ignore
                                     st.session_state.editing_user = None  # type: ignore

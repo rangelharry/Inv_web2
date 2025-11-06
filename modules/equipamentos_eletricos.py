@@ -299,9 +299,30 @@ def show_equipamentos_eletricos_page():
                             st.rerun()
                     with cols[11]:
                         if st.button("❌", key=f"del_eq_{row['id']}", help="Excluir equipamento"):
+                            st.session_state[f'confirm_delete_eq_{row["id"]}'] = True
+                            st.rerun()
+                
+                # Modal de confirmação de exclusão
+                if st.session_state.get(f'confirm_delete_eq_{row["id"]}', False):
+                    st.markdown("---")
+                    st.error(f"⚠️ **CONFIRMAÇÃO DE EXCLUSÃO**")
+                    st.warning(f"Tem certeza que deseja excluir o equipamento **{row['nome']}** (Código: {row['codigo']})?\n\nEsta ação não pode ser desfeita!")
+                    
+                    col_cancel, col_confirm = st.columns(2)
+                    with col_cancel:
+                        if st.button("❌ Cancelar", key=f"cancel_del_eq_{row['id']}"):
+                            del st.session_state[f'confirm_delete_eq_{row["id"]}']
+                            st.rerun()
+                    
+                    with col_confirm:
+                        if st.button("🗑️ Confirmar Exclusão", key=f"confirm_del_eq_{row['id']}", type="primary"):
                             if manager.delete_equipamento(int(row['id']), row['nome']):
                                 st.success(f"Equipamento {row['nome']} removido com sucesso!")
+                                del st.session_state[f'confirm_delete_eq_{row["id"]}']
                                 st.rerun()
+                            else:
+                                st.error("Erro ao excluir equipamento.")
+                    st.markdown("---")
 
                 # Modal de edição
                 if st.session_state.get(f'edit_mode_eq_{row["id"]}', False):

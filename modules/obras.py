@@ -278,7 +278,7 @@ def show_obras_page():
                             col_btn1, col_btn2 = st.columns(2)
                             with col_btn1:
                                 if st.form_submit_button("💾 Salvar", type="primary"):
-                                    dados_update = {
+                                    dados_update: dict[str, Any] = {
                                         'codigo': novo_codigo,
                                         'nome': novo_nome,
                                         'status': novo_status,

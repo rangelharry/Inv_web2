@@ -7,6 +7,10 @@ import streamlit as st
 import plotly.express as px  # type: ignore
 import plotly.graph_objects as go  # type: ignore
 from streamlit_option_menu import option_menu  # type: ignore
+from typing import Dict, Union
+
+# Tipo para métricas do dashboard
+MetricsData = Dict[str, Dict[str, Union[int, float]]]
 
 # Configuração da página
 st.set_page_config(
@@ -188,6 +192,75 @@ def show_login_page():
 
 # Removida função de registro público - apenas administradores podem criar usuários
 
+# Cache para métricas do dashboard
+@st.cache_data(ttl=60)  # Cache por 60 segundos
+def get_dashboard_metrics() -> MetricsData:
+    """Busca métricas do dashboard com cache"""
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    
+    metrics: MetricsData = {}
+    
+    try:
+        # Métricas principais em uma query otimizada
+        cursor.execute("""
+            SELECT 
+                'insumos' as tipo,
+                COUNT(*) as total,
+                SUM(CASE WHEN quantidade_atual <= quantidade_minima THEN 1 ELSE 0 END) as alertas,
+                SUM(quantidade_atual * preco_unitario) as valor_total
+            FROM insumos WHERE ativo = 1
+            UNION ALL
+            SELECT 
+                'equipamentos_eletricos' as tipo,
+                COUNT(*) as total,
+                0 as alertas,
+                SUM(COALESCE(valor_compra, 0)) as valor_total
+            FROM equipamentos_eletricos WHERE ativo = 1
+            UNION ALL
+            SELECT 
+                'equipamentos_manuais' as tipo,
+                COUNT(*) as total,
+                0 as alertas,
+                SUM(quantitativo * COALESCE(valor, 0)) as valor_total
+            FROM equipamentos_manuais WHERE ativo = 1
+            UNION ALL
+            SELECT 
+                'obras' as tipo,
+                COUNT(*) as total,
+                0 as alertas,
+                0 as valor_total
+            FROM obras WHERE status = 'ativo'
+        """)
+        
+        results = cursor.fetchall()
+        for row in results:
+            tipo, total, alertas, valor = row
+            metrics[tipo] = {
+                'total': total or 0,
+                'alertas': alertas or 0,
+                'valor_total': valor or 0
+            }
+        
+        # Movimentações recentes
+        cursor.execute("""
+            SELECT 
+                COUNT(CASE WHEN DATE(data_movimentacao) = DATE('now') THEN 1 END) as hoje,
+                COUNT(CASE WHEN DATE(data_movimentacao) >= DATE('now', '-7 days') THEN 1 END) as semana
+            FROM movimentacoes
+        """)
+        mov_result = cursor.fetchone()
+        metrics['movimentacoes'] = {
+            'hoje': mov_result[0] or 0,
+            'semana': mov_result[1] or 0
+        }
+        
+        return metrics
+        
+    except Exception as e:
+        st.error(f"Erro ao buscar métricas: {e}")
+        return {}
+
 # Dashboard principal
 def show_dashboard():
     """Exibe dashboard principal com métricas"""
@@ -198,101 +271,91 @@ def show_dashboard():
     </div>
     """, unsafe_allow_html=True)
     
-    # Buscar dados para métricas
-    conn = db.get_connection()
-    cursor = conn.cursor()
+    # Botão para atualizar cache
+    col_refresh, col_auto = st.columns([1, 4])
+    with col_refresh:
+        if st.button("🔄 Atualizar", help="Atualizar métricas"):
+            st.cache_data.clear()
+            st.rerun()
     
-    try:
-        # Métricas principais
-        cursor.execute("SELECT COUNT(*) as total FROM insumos WHERE ativo = 1")
-        insumos_count = cursor.fetchone()[0] or 0
-        
-        cursor.execute("SELECT COUNT(*) as total FROM equipamentos_eletricos WHERE ativo = 1")
-        eq_eletricos_count = cursor.fetchone()[0] or 0
-        
-        cursor.execute("SELECT COUNT(*) as total FROM equipamentos_manuais WHERE ativo = 1")
-        eq_manuais_count = cursor.fetchone()[0] or 0
-        
-        cursor.execute("SELECT COUNT(*) as total FROM obras WHERE status = 'ativo'")
-        obras_count = cursor.fetchone()[0] or 0
-        
-        # Valores totais
-        cursor.execute("SELECT SUM(quantidade_atual * preco_unitario) as valor FROM insumos WHERE ativo = 1 AND preco_unitario IS NOT NULL")
-        valor_insumos = cursor.fetchone()[0] or 0
-        
-        cursor.execute("SELECT SUM(valor_compra) as valor FROM equipamentos_eletricos WHERE ativo = 1 AND valor_compra IS NOT NULL")
-        valor_eq_eletricos = cursor.fetchone()[0] or 0
-        
-        cursor.execute("SELECT SUM(quantitativo * valor) as valor FROM equipamentos_manuais WHERE ativo = 1 AND valor IS NOT NULL")
-        valor_eq_manuais = cursor.fetchone()[0] or 0
-        
-        # Exibir métricas
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("📦 Insumos", f"{insumos_count:,}", help="Total de insumos ativos")
-        
-        with col2:
-            st.metric("⚡ Equip. Elétricos", f"{eq_eletricos_count:,}", help="Total de equipamentos elétricos ativos")
-        
-        with col3:
-            st.metric("🔧 Equip. Manuais", f"{eq_manuais_count:,}", help="Total de equipamentos manuais ativos")
-        
-        with col4:
-            st.metric("🏢 Obras Ativas", f"{obras_count:,}", help="Total de obras/departamentos ativos")
-        
-        # Segunda linha de métricas - Valores
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("💰 Valor Insumos", f"R$ {valor_insumos:,.2f}", help="Valor total do estoque de insumos")
-        
-        with col2:
-            st.metric("💰 Valor Eq. Elétricos", f"R$ {valor_eq_eletricos:,.2f}", help="Valor total dos equipamentos elétricos")
-        
-        with col3:
-            st.metric("💰 Valor Eq. Manuais", f"R$ {valor_eq_manuais:,.2f}", help="Valor total dos equipamentos manuais")
-        
-        # Valor total geral
-        valor_total = valor_insumos + valor_eq_eletricos + valor_eq_manuais
-        st.metric("🏆 VALOR TOTAL DO INVENTÁRIO", f"R$ {valor_total:,.2f}", help="Valor total de todo o inventário")
-        
-        # Alertas de estoque baixo
-        cursor.execute("""
-            SELECT COUNT(*) FROM insumos 
-            WHERE ativo = 1 AND quantidade_atual <= quantidade_minima
-        """)
-        alertas_insumos = cursor.fetchone()[0] or 0
-        
-        if alertas_insumos > 0:
-            st.warning(f"⚠️ {alertas_insumos} insumo(s) com estoque baixo!")
-        
-        # Atividade recente
-        st.subheader("📈 Atividade Recente")
-        cursor.execute("""
-            SELECT COUNT(*) as movimentacoes_hoje 
-            FROM movimentacoes 
-            WHERE DATE(data_movimentacao) = DATE('now')
-        """)
-        mov_hoje = cursor.fetchone()[0] or 0
-        
-        cursor.execute("""
-            SELECT COUNT(*) as movimentacoes_semana 
-            FROM movimentacoes 
-            WHERE DATE(data_movimentacao) >= DATE('now', '-7 days')
-        """)
-        mov_semana = cursor.fetchone()[0] or 0
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.info(f"📊 **{mov_hoje}** movimentações hoje")
-        with col2:
-            st.info(f"📊 **{mov_semana}** movimentações esta semana")
-            
-    except Exception as e:
-        st.error(f"Erro ao carregar dashboard: {e}")
-        import traceback
-        st.error(f"Detalhes do erro: {traceback.format_exc()}")
+    with col_auto:
+        st.caption("📊 Métricas atualizadas automaticamente a cada minuto")
+    
+    # Buscar dados com cache
+    with st.spinner("Carregando métricas do dashboard..."):
+        metrics = get_dashboard_metrics()
+    
+    if not metrics:
+        st.error("❌ Não foi possível carregar as métricas do dashboard.")
+        return
+    
+    # Extrair dados das métricas
+    insumos_count: int = int(metrics.get('insumos', {}).get('total', 0))
+    eq_eletricos_count: int = int(metrics.get('equipamentos_eletricos', {}).get('total', 0))
+    eq_manuais_count: int = int(metrics.get('equipamentos_manuais', {}).get('total', 0))
+    obras_count: int = int(metrics.get('obras', {}).get('total', 0))
+    
+    valor_insumos: float = float(metrics.get('insumos', {}).get('valor_total', 0))
+    valor_eq_eletricos: float = float(metrics.get('equipamentos_eletricos', {}).get('valor_total', 0))
+    valor_eq_manuais: float = float(metrics.get('equipamentos_manuais', {}).get('valor_total', 0))
+    
+    alertas_insumos: int = int(metrics.get('insumos', {}).get('alertas', 0))
+    mov_hoje: int = int(metrics.get('movimentacoes', {}).get('hoje', 0))
+    mov_semana: int = int(metrics.get('movimentacoes', {}).get('semana', 0))
+    
+    # Exibir métricas principais
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("📦 Insumos", f"{insumos_count:,}", help="Total de insumos ativos")
+    
+    with col2:
+        st.metric("⚡ Equip. Elétricos", f"{eq_eletricos_count:,}", help="Total de equipamentos elétricos ativos")
+    
+    with col3:
+        st.metric("🔧 Equip. Manuais", f"{eq_manuais_count:,}", help="Total de equipamentos manuais ativos")
+    
+    with col4:
+        st.metric("🏢 Obras Ativas", f"{obras_count:,}", help="Total de obras/departamentos ativos")
+    
+    # Segunda linha de métricas - Valores
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("💰 Valor Insumos", f"R$ {valor_insumos:,.2f}", help="Valor total do estoque de insumos")
+    
+    with col2:
+        st.metric("💰 Valor Eq. Elétricos", f"R$ {valor_eq_eletricos:,.2f}", help="Valor total dos equipamentos elétricos")
+    
+    with col3:
+        st.metric("💰 Valor Eq. Manuais", f"R$ {valor_eq_manuais:,.2f}", help="Valor total dos equipamentos manuais")
+    
+    # Valor total geral com variação
+    valor_total: float = valor_insumos + valor_eq_eletricos + valor_eq_manuais
+    st.metric(
+        "🏆 VALOR TOTAL DO INVENTÁRIO", 
+        f"R$ {valor_total:,.2f}", 
+        help="Valor total de todo o inventário"
+    )
+    
+    # Alertas e indicadores
+    if alertas_insumos > 0:
+        st.error(f"🚨 **ATENÇÃO:** {alertas_insumos} insumo(s) com estoque baixo!")
+    else:
+        st.success("✅ Todos os insumos estão com estoque adequado")
+    
+    # Atividade recente
+    st.subheader("📈 Atividade Recente")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("📊 Hoje", f"{mov_hoje}", help="Movimentações realizadas hoje")
+    with col2:
+        st.metric("📊 Esta Semana", f"{mov_semana}", help="Movimentações dos últimos 7 dias")
+    with col3:
+        # Calcular média diária da semana
+        media_diaria: float = mov_semana / 7 if mov_semana > 0 else 0
+        st.metric("📊 Média Diária", f"{media_diaria:.1f}", help="Média de movimentações por dia na semana")
 
 # Sidebar com menu de navegação
 def show_sidebar():

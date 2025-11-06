@@ -179,6 +179,8 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Arquivos de teste e debug específicos do projeto
 test_db_connection.py
 test_db_direct.py
 test_em_query.py
@@ -187,3 +189,20 @@ fix_form_indent.py
 fix_indent.py
 debug_dataframe.py
 debug_insumos.py
+check_db.py
+check_tables.py
+find_db.py
+optimize_database.py
+update_codes.py
+
+# Banco de dados local (não commitar em produção)
+inventory.db
+*.db
+
+# Arquivos de backup
+*_backup.py
+*_OLD.py
+*_BACKUP.py
+
+# Streamlit específico
+.streamlit/secrets.toml

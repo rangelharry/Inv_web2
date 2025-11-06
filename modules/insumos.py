@@ -410,12 +410,31 @@ def show_insumos_page():
                     
                     with col9:
                         if st.button("❌", key=f"del_{row['id']}", help="Excluir insumo"):
+                            st.session_state[f'confirm_delete_insumo_{row["id"]}'] = True
+                            st.rerun()
+                
+                # Modal de confirmação de exclusão
+                if st.session_state.get(f'confirm_delete_insumo_{row["id"]}', False):
+                    st.markdown("---")
+                    st.error(f"⚠️ **CONFIRMAÇÃO DE EXCLUSÃO**")
+                    st.warning(f"Tem certeza que deseja excluir o insumo **{row['descricao']}** (Código: {row['codigo']})?\n\nEsta ação não pode ser desfeita!")
+                    
+                    col_cancel, col_confirm = st.columns(2)
+                    with col_cancel:
+                        if st.button("❌ Cancelar", key=f"cancel_del_insumo_{row['id']}"):
+                            del st.session_state[f'confirm_delete_insumo_{row["id"]}']
+                            st.rerun()
+                    
+                    with col_confirm:
+                        if st.button("🗑️ Confirmar Exclusão", key=f"confirm_del_insumo_{row['id']}", type="primary"):
                             success, message = manager.delete_insumo(int(row['id']), user_data['id'])  # type: ignore
                             if success:
                                 st.success(f"✅ {message}")
+                                del st.session_state[f'confirm_delete_insumo_{row["id"]}']
                                 st.rerun()
                             else:
                                 st.error(f"❌ {message}")
+                    st.markdown("---")
                 
                 # Modal de edição
                 if st.session_state.get(f'edit_mode_{row["id"]}', False):

@@ -239,9 +239,30 @@ def show_responsaveis_page():
                         st.rerun()
                 with cols[8]:
                     if st.button("❌", key=f"del_resp_{row['id']}", help="Excluir responsável"):
-                        if manager.delete_responsavel(int(row['id']), row['nome']):
-                            st.success(f"Responsável {row['nome']} excluído com sucesso!")
+                        st.session_state[f'confirm_delete_resp_{row["id"]}'] = True
+                        st.rerun()
+                
+                # Modal de confirmação de exclusão
+                if st.session_state.get(f'confirm_delete_resp_{row["id"]}', False):
+                    st.markdown("---")
+                    st.error(f"⚠️ **CONFIRMAÇÃO DE EXCLUSÃO**")
+                    st.warning(f"Tem certeza que deseja excluir o responsável **{row['nome']}**?\n\nEsta ação não pode ser desfeita!")
+                    
+                    col_cancel, col_confirm = st.columns(2)
+                    with col_cancel:
+                        if st.button("❌ Cancelar", key=f"cancel_del_resp_{row['id']}"):
+                            del st.session_state[f'confirm_delete_resp_{row["id"]}']
                             st.rerun()
+                    
+                    with col_confirm:
+                        if st.button("🗑️ Confirmar Exclusão", key=f"confirm_del_resp_{row['id']}", type="primary"):
+                            if manager.delete_responsavel(int(row['id']), row['nome']):
+                                st.success(f"Responsável {row['nome']} excluído com sucesso!")
+                                del st.session_state[f'confirm_delete_resp_{row["id"]}']
+                                st.rerun()
+                            else:
+                                st.error("Erro ao excluir responsável.")
+                    st.markdown("---")
                 
                 # Modal de edição
                 if st.session_state.get(f'edit_mode_resp_{row["id"]}', False):
@@ -318,7 +339,22 @@ def show_responsaveis_page():
             submitted = st.form_submit_button("💾 Cadastrar Responsável", type="primary")
             
             if submitted:
-                if nome and cargo and email and telefone:
+                # Importar validador
+                from modules.validators import DataValidator, VALIDATION_RULES
+                
+                # Preparar dados para validação
+                form_data = {
+                    'nome': nome,
+                    'cargo': cargo,
+                    'email': email,
+                    'telefone': telefone,
+                    'cpf': cpf
+                }
+                
+                # Validar dados
+                is_valid, errors = DataValidator.validate_form_data(form_data, VALIDATION_RULES['responsavel'])
+                
+                if is_valid:
                     data: dict[str, Any] = {
                         'codigo': codigo,
                         'nome': nome,
@@ -332,12 +368,17 @@ def show_responsaveis_page():
                         'observacoes': observacoes
                     }
 
-                    responsavel_id = manager.create_responsavel(data)
-                    if responsavel_id:
-                        st.success(f"✅ Responsável '{nome}' cadastrado com sucesso! (ID: {responsavel_id})")
-                        st.rerun()
+                    with st.spinner("Cadastrando responsável..."):
+                        responsavel_id = manager.create_responsavel(data)
+                        if responsavel_id:
+                            st.success(f"✅ Responsável '{nome}' cadastrado com sucesso! (ID: {responsavel_id})")
+                            st.balloons()  # Efeito visual de sucesso
+                            st.rerun()
+                        else:
+                            st.error("❌ Erro interno ao cadastrar responsável. Tente novamente.")
                 else:
-                    st.error("❌ Preencha todos os campos obrigatórios marcados com *")
+                    for error in errors:
+                        st.error(f"❌ {error}")
     
     with tab3:
         st.subheader("Estatísticas dos Responsáveis")
