@@ -9,9 +9,10 @@ import psycopg2.extras
 import bcrypt
 import os
 import streamlit as st
+from urllib.parse import urlparse
 
 class DatabaseConnection:
-    def __init__(self, connection_string: str | None = None):
+    def __init__(self, connection_string: str = None):
         self.connection_string = connection_string or self.get_connection_string()
         self.conn = None
         self.create_connection()
@@ -374,5 +375,5 @@ class DatabaseConnection:
             self.conn.close()
             self.conn = None
 
-# Instância global do banco de dados
-db = DatabaseConnection()
+# Instância global do banco de dados - será usada quando migrarmos
+# db = DatabaseConnection()
