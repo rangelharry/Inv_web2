@@ -133,6 +133,40 @@ class AuthenticationManager:
                 }
             return False, "Senha incorreta", None
         except Exception as e:
+            # Se a conexão estiver fechada, tenta novamente uma vez
+            if 'closed' in str(e).lower() or 'connection already closed' in str(e).lower():
+                try:
+                    conn = self.get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT id, nome, email, password_hash, perfil, ativo
+                        FROM usuarios 
+                        WHERE email = %s
+                    """, (email,))
+                    user = cursor.fetchone()
+                    if not user:
+                        return False, "Usuário não encontrado", None
+                    user_id, nome, email, password_hash, perfil, ativo = user
+                    if not ativo:
+                        return False, "Usuário inativo", None
+                    if self.verify_password(password, password_hash):
+                        cursor.execute("""
+                            UPDATE usuarios 
+                            SET ultimo_login = %s 
+                            WHERE id = %s
+                        """, (datetime.now(), user_id))
+                        conn.commit()
+                        self.log_action(user_id, 'login', 'usuarios', user_id, 'Login realizado')
+                        return True, "Login realizado com sucesso", {
+                            'id': user_id,
+                            'nome': nome,
+                            'email': email,
+                            'perfil': perfil
+                        }
+                    return False, "Senha incorreta", None
+                except Exception as e2:
+                    print(f"Erro na autenticação (retry): {e2}")
+                    return False, f"Erro na autenticação: {e2}", None
             print(f"Erro na autenticação: {e}")
             return False, f"Erro na autenticação: {e}", None
     
