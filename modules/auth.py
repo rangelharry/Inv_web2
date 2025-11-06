@@ -61,7 +61,7 @@ class AuthenticationManager:
                 return False, "; ".join(errors)
             
             # Verifica se email já existe
-            cursor.execute("SELECT id FROM usuarios WHERE email = ?", (email,))
+            cursor.execute("SELECT id FROM usuarios WHERE email = %s", (email,))
             if cursor.fetchone():
                 return False, "Email já está em uso"
             
@@ -69,10 +69,11 @@ class AuthenticationManager:
             password_hash = self.hash_password(password)
             cursor.execute("""
             INSERT INTO usuarios (nome, email, password_hash, perfil, ativo, criado_por)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """, (nome, email, password_hash, perfil, 1, criado_por))
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+            """, (nome, email, password_hash, perfil, True, criado_por))
             
-            user_id = cursor.lastrowid
+            result = cursor.fetchone()
+            user_id = result['id'] if result else None
             self.conn.commit()
             
             # Log da ação
@@ -99,7 +100,7 @@ class AuthenticationManager:
             
             cursor.execute("""
             SELECT id, nome, email, password_hash, perfil, ativo 
-            FROM usuarios WHERE email = ?
+            FROM usuarios WHERE email = %s
             """, (email,))
             
             user = cursor.fetchone()
@@ -115,7 +116,7 @@ class AuthenticationManager:
             
             # Atualiza último login
             cursor.execute("""
-            UPDATE usuarios SET ultimo_login = CURRENT_TIMESTAMP WHERE id = ?
+            UPDATE usuarios SET ultimo_login = CURRENT_TIMESTAMP WHERE id = %s
             """, (user['id'],))
             
             self.conn.commit()
@@ -139,7 +140,7 @@ class AuthenticationManager:
             
             cursor.execute("""
             INSERT INTO sessoes (usuario_id, token, data_expiracao, ativo)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
             """, (user_id, token, expiration, 1))
             
             self.conn.commit()
@@ -159,7 +160,7 @@ class AuthenticationManager:
             SELECT s.*, u.id as user_id, u.nome, u.email, u.perfil, u.ativo
             FROM sessoes s
             JOIN usuarios u ON s.usuario_id = u.id
-            WHERE s.token = ? AND s.ativo = 1 AND s.data_expiracao > CURRENT_TIMESTAMP
+            WHERE s.token = %s AND s.ativo = true AND s.data_expiracao > CURRENT_TIMESTAMP
             """, (token,))
             
             session = cursor.fetchone()
@@ -182,9 +183,9 @@ class AuthenticationManager:
             cursor = self.conn.cursor()
             
             if token:
-                cursor.execute("UPDATE sessoes SET ativo = 0 WHERE token = ?", (token,))
+                cursor.execute("UPDATE sessoes SET ativo = false WHERE token = %s", (token,))
             elif user_id:
-                cursor.execute("UPDATE sessoes SET ativo = 0 WHERE usuario_id = ?", (user_id,))
+                cursor.execute("UPDATE sessoes SET ativo = false WHERE usuario_id = %s", (user_id,))
             
             self.conn.commit()
             
@@ -202,7 +203,7 @@ class AuthenticationManager:
             cursor = self.conn.cursor()
             
             # Busca usuário atual
-            cursor.execute("SELECT password_hash FROM usuarios WHERE id = ?", (user_id,))
+            cursor.execute("SELECT password_hash FROM usuarios WHERE id = %s", (user_id,))
             user = cursor.fetchone()
             
             if not user:
@@ -220,7 +221,7 @@ class AuthenticationManager:
             # Atualiza senha
             new_hash = self.hash_password(new_password)
             cursor.execute("""
-            UPDATE usuarios SET password_hash = ? WHERE id = ?
+            UPDATE usuarios SET password_hash = %s WHERE id = %s
             """, (new_hash, user_id))
             
             self.conn.commit()
@@ -258,7 +259,7 @@ class AuthenticationManager:
             cursor = self.conn.cursor()
             
             # Busca dados atuais
-            cursor.execute("SELECT * FROM usuarios WHERE id = ?", (user_id,))
+            cursor.execute("SELECT * FROM usuarios WHERE id = %s", (user_id,))
             old_data = dict(cursor.fetchone())
             
             # Validações
@@ -266,14 +267,14 @@ class AuthenticationManager:
                 return False, "Email inválido"
             
             # Verifica se email já existe em outro usuário
-            cursor.execute("SELECT id FROM usuarios WHERE email = ? AND id != ?", (email, user_id))
+            cursor.execute("SELECT id FROM usuarios WHERE email = %s AND id != %s", (email, user_id))
             if cursor.fetchone():
                 return False, "Email já está em uso por outro usuário"
             
             # Atualiza usuário
             cursor.execute("""
-            UPDATE usuarios SET nome = ?, email = ?, perfil = ?, ativo = ?
-            WHERE id = ?
+            UPDATE usuarios SET nome = %s, email = %s, perfil = %s, ativo = %s
+            WHERE id = %s
             """, (nome, email, perfil, ativo, user_id))
             
             self.conn.commit()
@@ -305,17 +306,17 @@ class AuthenticationManager:
             cursor = self.conn.cursor()
             
             # Busca dados do usuário
-            cursor.execute("SELECT * FROM usuarios WHERE id = ?", (user_id,))
+            cursor.execute("SELECT * FROM usuarios WHERE id = %s", (user_id,))
             user_data = cursor.fetchone()
             
             if not user_data:
                 return False, "Usuário não encontrado"
             
             # Inativa usuário
-            cursor.execute("UPDATE usuarios SET ativo = 0 WHERE id = ?", (user_id,))
+            cursor.execute("UPDATE usuarios SET ativo = false WHERE id = %s", (user_id,))
             
             # Inativa todas as sessões
-            cursor.execute("UPDATE sessoes SET ativo = 0 WHERE usuario_id = ?", (user_id,))
+            cursor.execute("UPDATE sessoes SET ativo = false WHERE usuario_id = %s", (user_id,))
             
             self.conn.commit()
             
@@ -341,14 +342,14 @@ class AuthenticationManager:
             cursor = self.conn.cursor()
             
             # Busca nome do usuário
-            cursor.execute("SELECT nome FROM usuarios WHERE id = ?", (user_id,))
+            cursor.execute("SELECT nome FROM usuarios WHERE id = %s", (user_id,))
             user = cursor.fetchone()
             user_name = user['nome'] if user else 'Sistema'
             
             cursor.execute("""
             INSERT INTO logs_auditoria 
             (usuario_id, usuario_nome, acao, modulo, item_id, dados_anteriores, dados_novos, observacoes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """, (user_id, user_name, action, module, item_id, old_data, new_data, notes))
             
             self.conn.commit()
