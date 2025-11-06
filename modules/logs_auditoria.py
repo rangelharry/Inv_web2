@@ -16,7 +16,7 @@ class LogsAuditoriaManager:
             
             query = """
                 SELECT 
-                    l.id, l.data_acao, l.acao, l.modulo, l.acao,
+                    l.id, l.data_acao, l.acao, l.modulo,
                     l.detalhes, u.nome as usuario_nome, u.email as usuario_email
                 FROM logs_auditoria l
                 LEFT JOIN usuarios u ON l.usuario_id = u.id
@@ -47,7 +47,7 @@ class LogsAuditoriaManager:
             results = cursor.fetchall()
             
             columns = [
-                'id', 'data_acao', 'acao', 'modulo', 'acao',
+                'id', 'data_acao', 'acao', 'modulo',
                 'detalhes', 'usuario_nome', 'usuario_email'
             ]
             
@@ -177,12 +177,11 @@ def show_logs_auditoria_page():
             df['data_formatada'] = pd.to_datetime(df['data_acao']).dt.strftime('%d/%m/%Y %H:%M:%S')  # type: ignore
             
             st.dataframe(  # type: ignore
-                df[['data_formatada', 'usuario_nome', 'modulo', 'tipo_acao', 'acao']],
+                df[['data_formatada', 'usuario_nome', 'modulo', 'acao']],
                 column_config={
                     'data_formatada': 'Data/Hora',
                     'usuario_nome': 'Usuário',
                     'modulo': 'Módulo',
-                    'tipo_acao': 'Tipo',
                     'acao': 'Ação'
                 },
                 width='stretch',
@@ -251,7 +250,7 @@ def show_logs_auditoria_page():
             
             with col2:
                 # Gráfico por tipo de ação
-                tipo_counts = df_stats['tipo_acao'].value_counts()
+                tipo_counts = df_stats['acao'].value_counts()
                 st.plotly_chart(  # type: ignore
                     {
                         'data': [{
@@ -277,14 +276,14 @@ def show_logs_auditoria_page():
             st.markdown("### 👤 Atividade por Usuário (Últimos 30 dias)")
             user_activity = df_analysis.groupby('usuario_nome').agg({  # type: ignore
                 'id': 'count',
-                'tipo_acao': lambda x: x.value_counts().to_dict()  # type: ignore
+                'acao': lambda x: x.value_counts().to_dict()  # type: ignore
             }).rename(columns={'id': 'total_acoes'})
             
             st.dataframe(  # type: ignore
                 user_activity.sort_values('total_acoes', ascending=False),  # type: ignore
                 column_config={
                     'total_acoes': 'Total de Ações',
-                    'tipo_acao': 'Tipos de Ação'
+                    'acao': 'Tipos de Ação'
                 },
                 width='stretch'
             )

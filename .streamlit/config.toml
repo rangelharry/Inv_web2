@@ -3,7 +3,6 @@ dataFrameSerialization = "legacy"
 
 [server]
 headless = true
-port = $PORT
 enableCORS = false
 enableXsrfProtection = false
 
@@ -12,6 +11,6 @@ gatherUsageStats = false
 
 [theme]
 primaryColor = "#FF6B6B"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F0F2F6"
-textColor = "#262730"
+backgroundColor = "#18191A"
+secondaryBackgroundColor = "#242526"
+textColor = "#FAFAFA"

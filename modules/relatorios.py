@@ -69,9 +69,9 @@ class RelatoriosManager:
             
             query = """
                 SELECT 
-                    m.data_movimentacao, m.tipo_movimentacao, m.quantidade,
-                    m.motivo, m.local_origem as origem, m.local_destino as destino,
-                    m.item_nome, m.item_codigo,
+                    m.data_movimentacao, m.tipo, m.quantidade,
+                    m.motivo, m.obra_origem_id as origem, m.obra_destino_id as destino,
+                    m.descricao_item, m.codigo_item,
                     u.nome as usuario_nome
                 FROM movimentacoes m
                 LEFT JOIN usuarios u ON m.usuario_id = u.id
@@ -83,9 +83,9 @@ class RelatoriosManager:
             results = cursor.fetchall()  # type: ignore
             
             columns = [
-                'data_movimentacao', 'tipo_movimentacao', 'quantidade',
+                'data_movimentacao', 'tipo', 'quantidade',
                 'motivo', 'origem', 'destino',
-                'item_nome', 'codigo_patrimonial', 'usuario_nome'
+                'descricao_item', 'codigo_item', 'usuario_nome'
             ]
             
             return pd.DataFrame(results, columns=columns)  # type: ignore
