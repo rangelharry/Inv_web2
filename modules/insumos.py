@@ -405,7 +405,11 @@ def show_insumos_page():
                     
                     with col8:
                         if st.button("📦", key=f"move_{row['id']}", help="Movimentar insumo"):
-                            st.session_state[f'move_mode_{row["id"]}'] = True
+                            # Fecha todos os outros modais de movimentação
+                            for k in list(st.session_state.keys()):
+                                if isinstance(k, str) and k.startswith("move_mode_") and k != f"move_mode_{row['id']}":
+                                    st.session_state[k] = False
+                            st.session_state[f"move_mode_{row['id']}"] = True
                             st.rerun()
                     
                     with col9:
@@ -523,6 +527,8 @@ def show_insumos_page():
                     # Botão para fechar o modal
                     if st.button("❌ Fechar", key=f"close_move_{row['id']}"):
                         del st.session_state[f'move_mode_{row["id"]}']
+                        st.session_state['modal_type'] = None
+                        st.session_state['last_modal_item_id'] = None
                         st.rerun()
                     
                     st.divider()

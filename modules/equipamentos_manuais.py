@@ -287,7 +287,11 @@ def show_equipamentos_manuais_page():
                         st.rerun()
                 with col3:
                     if st.button("📦 Mover", key=f"move_em_{row['id']}", help="Movimentar equipamento"):
-                        st.session_state[f'move_mode_em_{row["id"]}'] = True
+                        # Fecha todos os outros modais de movimentação
+                        for k in list(st.session_state.keys()):
+                            if isinstance(k, str) and k.startswith("move_mode_em_") and k != f"move_mode_em_{row['id']}":
+                                st.session_state[k] = False
+                        st.session_state[f"move_mode_em_{row['id']}"] = True
                         st.rerun()
                 with col4:
                     if st.button("❌ Excluir", key=f"del_em_{row['id']}", help="Excluir equipamento"):
@@ -344,6 +348,8 @@ def show_equipamentos_manuais_page():
                     # Botão para fechar o modal
                     if st.button("❌ Fechar", key=f"close_move_em_{row['id']}"):
                         del st.session_state[f'move_mode_em_{row["id"]}']
+                        st.session_state['modal_type_manual'] = None
+                        st.session_state['last_modal_item_id_manual'] = None
                         st.rerun()
                 
                 # Separador visual entre equipamentos

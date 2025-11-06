@@ -295,7 +295,11 @@ def show_equipamentos_eletricos_page():
                             st.rerun()
                     with cols[10]:
                         if st.button("📦", key=f"move_eq_{row['id']}", help="Movimentar equipamento"):
-                            st.session_state[f'move_mode_eq_{row["id"]}'] = True
+                            # Fecha todos os outros modais de movimentação
+                            for k in list(st.session_state.keys()):
+                                if isinstance(k, str) and k.startswith("move_mode_eq_") and k != f"move_mode_eq_{row['id']}":
+                                    st.session_state[k] = False
+                            st.session_state[f"move_mode_eq_{row['id']}"] = True
                             st.rerun()
                     with cols[11]:
                         if st.button("❌", key=f"del_eq_{row['id']}", help="Excluir equipamento"):
@@ -378,6 +382,8 @@ def show_equipamentos_eletricos_page():
                     # Botão para fechar o modal
                     if st.button("❌ Fechar", key=f"close_move_eq_{row['id']}"):
                         del st.session_state[f'move_mode_eq_{row["id"]}']
+                        st.session_state['modal_type_eletrico'] = None
+                        st.session_state['last_modal_item_id_eletrico'] = None
                         st.rerun()
                     
                     st.divider()
