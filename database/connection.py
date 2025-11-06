@@ -31,9 +31,14 @@ class DatabaseConnection:
     def create_connection(self):
         """Cria a conexão com PostgreSQL"""
         try:
+            # Adiciona configurações mais robustas para a conexão
             self.conn = psycopg2.connect(
                 self.connection_string,
-                cursor_factory=psycopg2.extras.RealDictCursor
+                cursor_factory=psycopg2.extras.RealDictCursor,
+                connect_timeout=30,
+                keepalives_idle=600,
+                keepalives_interval=30,
+                keepalives_count=3
             )
             self.conn.autocommit = False
             print("✅ Conexão com PostgreSQL estabelecida!")
@@ -42,10 +47,22 @@ class DatabaseConnection:
             raise
     
     def get_connection(self):
-        """Retorna uma conexão com o banco"""
-        if not self.conn or self.conn.closed:
+        """Retorna uma conexão com o banco, recriando se necessário"""
+        try:
+            # Verifica se a conexão está ativa
+            if not self.conn or self.conn.closed:
+                print("🔄 Reconectando ao PostgreSQL...")
+                self.create_connection()
+            else:
+                # Testa a conexão com um ping simples
+                cursor = self.conn.cursor()
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+            return self.conn
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            print(f"🔄 Conexão perdida, reconectando: {e}")
             self.create_connection()
-        return self.conn
+            return self.conn
     
     def create_tables(self):
         cursor = self.get_connection().cursor()

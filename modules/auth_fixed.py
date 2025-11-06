@@ -99,22 +99,27 @@ class AuthenticationManager:
                 conn.rollback()
             return False, f"Erro ao criar usuário: {e}"
     
-    def authenticate_user(self, email: str, password: str):
+    def authenticate_user(self, email: str, password: str) -> Optional[dict]:
         """Autentica usuário"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
+            
             cursor.execute("""
                 SELECT id, nome, email, password_hash, perfil, ativo
                 FROM usuarios 
                 WHERE email = %s
             """, (email,))
+            
             user = cursor.fetchone()
             if not user:
-                return False, "Usuário não encontrado", None
+                return None
+            
             user_id, nome, email, password_hash, perfil, ativo = user
+            
             if not ativo:
-                return False, "Usuário inativo", None
+                return None
+            
             if self.verify_password(password, password_hash):
                 # Atualiza último login
                 cursor.execute("""
@@ -123,18 +128,22 @@ class AuthenticationManager:
                     WHERE id = %s
                 """, (datetime.now(), user_id))
                 conn.commit()
+                
                 # Log de login
                 self.log_action(user_id, 'login', 'usuarios', user_id, 'Login realizado')
-                return True, "Login realizado com sucesso", {
+                
+                return {
                     'id': user_id,
                     'nome': nome,
                     'email': email,
                     'perfil': perfil
                 }
-            return False, "Senha incorreta", None
+            
+            return None
+            
         except Exception as e:
             print(f"Erro na autenticação: {e}")
-            return False, f"Erro na autenticação: {e}", None
+            return None
     
     def change_password(self, user_id: int, old_password: str, new_password: str) -> Tuple[bool, str]:
         """Altera senha do usuário"""

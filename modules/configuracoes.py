@@ -47,10 +47,10 @@ class ConfiguracoesManager:
             
             for chave, valor, descricao, tipo, categoria in configs_padrao:
                 cursor.execute("""
-                    INSERT OR IGNORE INTO configuracoes (chave, valor, descricao, tipo, categoria)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO configuracoes (chave, valor, descricao, tipo, categoria)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (chave) DO NOTHING
                 """, (chave, valor, descricao, tipo, categoria))
-            
             self.db.get_connection().commit()
         except Exception as e:
             print(f"Erro ao criar configurações padrão: {str(e)}")
