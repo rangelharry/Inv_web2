@@ -4,12 +4,9 @@ Dashboard completo com todas as funcionalidades avançadas
 """
 
 import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime, date
-import json
-from streamlit_option_menu import option_menu
+import plotly.express as px  # type: ignore
+import plotly.graph_objects as go  # type: ignore
+from streamlit_option_menu import option_menu  # type: ignore
 
 # Configuração da página
 st.set_page_config(
@@ -30,6 +27,8 @@ try:
     from modules.responsaveis import show_responsaveis_page
     from modules.logs_auditoria import show_logs_auditoria_page
     from modules.relatorios import show_relatorios_page
+    from modules.usuarios import show_usuarios_page
+    from modules.configuracoes import show_configuracoes_page
 except ImportError as e:
     st.error(f"Erro ao importar módulos: {e}")
     st.stop()
@@ -57,19 +56,23 @@ def load_css():
     }
     
     .alert-card {
-        background: #fef2f2;
-        border: 1px solid #fecaca;
+        background: #f87171;
+        border: 1px solid #b91c1c;
+        color: #1a1a1a;
         padding: 1rem;
         border-radius: 8px;
         margin: 0.5rem 0;
+        font-weight: 500;
     }
     
     .success-card {
-        background: #f0fdf4;
-        border: 1px solid #bbf7d0;
+        background: #bbf7d0;
+        border: 1px solid #059669;
+        color: #1a1a1a;
         padding: 1rem;
         border-radius: 8px;
         margin: 0.5rem 0;
+        font-weight: 500;
     }
     
     .warning-card {
@@ -139,7 +142,7 @@ def check_authentication():
 # Página de login
 def show_login_page():
     """Exibe página de login"""
-    col1, col2, col3 = st.columns([1, 2, 1])
+    _, col2, _ = st.columns([1, 2, 1])
     
     with col2:
         st.markdown("""
@@ -153,35 +156,25 @@ def show_login_page():
             email = st.text_input("📧 Email", placeholder="seu.email@exemplo.com")
             password = st.text_input("🔒 Senha", type="password", placeholder="Sua senha")
             
-            col_btn1, col_btn2 = st.columns(2)
-            
-            with col_btn1:
-                if st.form_submit_button("🚀 Entrar", use_container_width=True):
-                    if email and password:
-                        success, message, user_data = auth_manager.authenticate_user(email, password)
-                        
-                        if success:
-                            st.session_state.authenticated = True
-                            st.session_state.user_data = user_data
+            if st.form_submit_button("🚀 Entrar", use_container_width=True):
+                if email and password:
+                    success, message, user_data = auth_manager.authenticate_user(email, password)
+                    
+                    if success:
+                        st.session_state.authenticated = True
+                        st.session_state.user_data = user_data
+                        if user_data and 'id' in user_data:
                             st.session_state.session_token = auth_manager.create_session(user_data['id'])
-                            st.success(f"✅ {message}")
-                            st.rerun()
-                        else:
-                            st.error(f"❌ {message}")
+                        st.success(f"✅ {message}")
+                        st.rerun()
                     else:
-                        st.warning("⚠️ Preencha todos os campos!")
-            
-            with col_btn2:
-                if st.form_submit_button("👤 Primeiro Acesso", use_container_width=True):
-                    st.session_state.show_register = True
-                    st.rerun()
+                        st.error(f"❌ {message}")
+                else:
+                    st.warning("⚠️ Preencha todos os campos!")
         
         # Informações do sistema
         with st.expander("ℹ️ Informações do Sistema"):
             st.info("""
-            **Credenciais Padrão:**
-            - **Email:** admin@inventario.com
-            - **Senha:** admin123
             
             **Funcionalidades:**
             - ✅ Dashboard com métricas em tempo real
@@ -193,49 +186,7 @@ def show_login_page():
             - ✅ Gestão de usuários e permissões
             """)
 
-# Página de registro (primeiro acesso)
-def show_register_page():
-    """Exibe página de registro para primeiro acesso"""
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col2:
-        st.markdown("""
-        <div class="main-header" style="text-align: center;">
-            <h1>👤 Primeiro Acesso</h1>
-            <p>Crie sua conta no sistema</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        with st.form("register_form"):
-            nome = st.text_input("👤 Nome Completo", placeholder="Seu nome completo")
-            email = st.text_input("📧 Email", placeholder="seu.email@exemplo.com")
-            password = st.text_input("🔒 Senha", type="password", placeholder="Mínimo 6 caracteres")
-            confirm_password = st.text_input("🔒 Confirmar Senha", type="password", placeholder="Digite a senha novamente")
-            
-            col_btn1, col_btn2 = st.columns(2)
-            
-            with col_btn1:
-                if st.form_submit_button("✅ Criar Conta", use_container_width=True):
-                    if nome and email and password and confirm_password:
-                        if password != confirm_password:
-                            st.error("❌ As senhas não coincidem!")
-                        else:
-                            success, message = auth_manager.create_user(nome, email, password, 'usuario')
-                            
-                            if success:
-                                st.success(f"✅ {message}")
-                                st.info("👍 Agora você pode fazer login com suas credenciais!")
-                                st.session_state.show_register = False
-                                st.rerun()
-                            else:
-                                st.error(f"❌ {message}")
-                    else:
-                        st.warning("⚠️ Preencha todos os campos!")
-            
-            with col_btn2:
-                if st.form_submit_button("⬅️ Voltar ao Login", use_container_width=True):
-                    st.session_state.show_register = False
-                    st.rerun()
+# Removida função de registro público - apenas administradores podem criar usuários
 
 # Dashboard principal
 def show_dashboard():
@@ -254,247 +205,94 @@ def show_dashboard():
     try:
         # Métricas principais
         cursor.execute("SELECT COUNT(*) as total FROM insumos WHERE ativo = 1")
-        total_insumos = cursor.fetchone()['total']
+        insumos_count = cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT COUNT(*) as total FROM itens_inventario WHERE tipo_item = 'Equipamento Elétrico'")
-        total_eq_eletricos = cursor.fetchone()['total']
+        cursor.execute("SELECT COUNT(*) as total FROM equipamentos_eletricos WHERE ativo = 1")
+        eq_eletricos_count = cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT COUNT(*) as total FROM itens_inventario WHERE tipo_item = 'Equipamento Manual'")
-        total_eq_manuais = cursor.fetchone()['total']
+        cursor.execute("SELECT COUNT(*) as total FROM equipamentos_manuais WHERE ativo = 1")
+        eq_manuais_count = cursor.fetchone()[0] or 0
         
         cursor.execute("SELECT COUNT(*) as total FROM obras WHERE status = 'ativo'")
-        total_obras = cursor.fetchone()['total']
+        obras_count = cursor.fetchone()[0] or 0
         
+        # Valores totais
         cursor.execute("SELECT SUM(quantidade_atual * preco_unitario) as valor FROM insumos WHERE ativo = 1 AND preco_unitario IS NOT NULL")
-        valor_total_insumos = cursor.fetchone()['valor'] or 0
+        valor_insumos = cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT SUM(quantidade_atual * valor_unitario) as valor FROM itens_inventario WHERE tipo_item = 'Equipamento Elétrico' AND valor_unitario IS NOT NULL")
-        valor_eq_eletricos = cursor.fetchone()['valor'] or 0
+        cursor.execute("SELECT SUM(valor_compra) as valor FROM equipamentos_eletricos WHERE ativo = 1 AND valor_compra IS NOT NULL")
+        valor_eq_eletricos = cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT SUM(quantidade_atual * valor_unitario) as valor FROM itens_inventario WHERE tipo_item = 'Equipamento Manual' AND valor_unitario IS NOT NULL")
-        valor_eq_manuais = cursor.fetchone()['valor'] or 0
+        cursor.execute("SELECT SUM(quantitativo * valor) as valor FROM equipamentos_manuais WHERE ativo = 1 AND valor IS NOT NULL")
+        valor_eq_manuais = cursor.fetchone()[0] or 0
         
-        valor_total_patrimonio = valor_total_insumos + valor_eq_eletricos + valor_eq_manuais
-        
-        # Cards de métricas
+        # Exibir métricas
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric(
-                label="📦 Total de Insumos",
-                value=f"{total_insumos:,}".replace(',', '.'),
-                delta="Itens ativos"
-            )
+            st.metric("📦 Insumos", f"{insumos_count:,}", help="Total de insumos ativos")
         
         with col2:
-            st.metric(
-                label="⚡ Equipamentos Elétricos",
-                value=f"{total_eq_eletricos:,}".replace(',', '.'),
-                delta="Unidades"
-            )
+            st.metric("⚡ Equip. Elétricos", f"{eq_eletricos_count:,}", help="Total de equipamentos elétricos ativos")
         
         with col3:
-            st.metric(
-                label="🔧 Equipamentos Manuais",
-                value=f"{total_eq_manuais:,}".replace(',', '.'),
-                delta="Unidades"
-            )
+            st.metric("🔧 Equip. Manuais", f"{eq_manuais_count:,}", help="Total de equipamentos manuais ativos")
         
         with col4:
-            st.metric(
-                label="🏗️ Obras Ativas",
-                value=f"{total_obras:,}".replace(',', '.'),
-                delta="Projetos"
-            )
+            st.metric("🏢 Obras Ativas", f"{obras_count:,}", help="Total de obras/departamentos ativos")
         
-        # Segunda linha de métricas
-        col5, col6, col7, col8 = st.columns(4)
+        # Segunda linha de métricas - Valores
+        col1, col2, col3 = st.columns(3)
         
-        with col5:
-            st.metric(
-                label="💰 Valor Total Patrimônio",
-                value=f"R$ {valor_total_patrimonio:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'),
-                delta="Estimativa"
-            )
+        with col1:
+            st.metric("💰 Valor Insumos", f"R$ {valor_insumos:,.2f}", help="Valor total do estoque de insumos")
         
-        with col6:
-            cursor.execute("SELECT COUNT(*) as total FROM insumos WHERE quantidade_atual <= quantidade_minima AND ativo = 1")
-            alertas_estoque = cursor.fetchone()['total']
-            st.metric(
-                label="⚠️ Alertas de Estoque",
-                value=f"{alertas_estoque}",
-                delta="Itens abaixo do mínimo",
-                delta_color="inverse"
-            )
+        with col2:
+            st.metric("💰 Valor Eq. Elétricos", f"R$ {valor_eq_eletricos:,.2f}", help="Valor total dos equipamentos elétricos")
         
-        with col7:
-            cursor.execute("SELECT COUNT(*) as total FROM equipamentos_eletricos WHERE status = 'Manutenção'")
-            eq_manutencao = cursor.fetchone()['total']
-            st.metric(
-                label="🔧 Em Manutenção",
-                value=f"{eq_manutencao}",
-                delta="Equipamentos",
-                delta_color="inverse"
-            )
+        with col3:
+            st.metric("💰 Valor Eq. Manuais", f"R$ {valor_eq_manuais:,.2f}", help="Valor total dos equipamentos manuais")
         
-        with col8:
-            cursor.execute("SELECT COUNT(*) as total FROM movimentacoes WHERE DATE(data_movimentacao) = DATE('now')")
-            movimentacoes_hoje = cursor.fetchone()['total']
-            st.metric(
-                label="📋 Movimentações Hoje",
-                value=f"{movimentacoes_hoje}",
-                delta="Registros"
-            )
+        # Valor total geral
+        valor_total = valor_insumos + valor_eq_eletricos + valor_eq_manuais
+        st.metric("🏆 VALOR TOTAL DO INVENTÁRIO", f"R$ {valor_total:,.2f}", help="Valor total de todo o inventário")
         
-        st.markdown("---")
+        # Alertas de estoque baixo
+        cursor.execute("""
+            SELECT COUNT(*) FROM insumos 
+            WHERE ativo = 1 AND quantidade_atual <= quantidade_minima
+        """)
+        alertas_insumos = cursor.fetchone()[0] or 0
         
-        # Gráficos
-        col_chart1, col_chart2 = st.columns(2)
+        if alertas_insumos > 0:
+            st.warning(f"⚠️ {alertas_insumos} insumo(s) com estoque baixo!")
         
-        with col_chart1:
-            st.subheader("📊 Distribuição do Inventário")
-            
-            # Gráfico de pizza
-            labels = ['Insumos', 'Eq. Elétricos', 'Eq. Manuais']
-            values = [total_insumos, total_eq_eletricos, total_eq_manuais]
-            colors = ['#3b82f6', '#10b981', '#f59e0b']
-            
-            fig_pie = go.Figure(data=[go.Pie(
-                labels=labels,
-                values=values,
-                hole=0.4,
-                marker_colors=colors
-            )])
-            
-            fig_pie.update_layout(
-                showlegend=True,
-                height=400,
-                margin=dict(t=50, b=50, l=50, r=50)
-            )
-            
-            st.plotly_chart(fig_pie, use_container_width=True)
-        
-        with col_chart2:
-            st.subheader("💰 Valor por Categoria")
-            
-            # Gráfico de barras
-            categorias = ['Insumos', 'Eq. Elétricos', 'Eq. Manuais']
-            valores = [valor_total_insumos, valor_eq_eletricos, valor_eq_manuais]
-            
-            fig_bar = go.Figure(data=[go.Bar(
-                x=categorias,
-                y=valores,
-                marker_color=['#3b82f6', '#10b981', '#f59e0b'],
-                text=[f'R$ {v:,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.') for v in valores],
-                textposition='auto',
-            )])
-            
-            fig_bar.update_layout(
-                title="Valor Estimado do Patrimônio por Categoria",
-                xaxis_title="Categorias",
-                yaxis_title="Valor (R$)",
-                height=400,
-                margin=dict(t=50, b=50, l=50, r=50)
-            )
-            
-            st.plotly_chart(fig_bar, use_container_width=True)
-        
-        # Alertas e notificações
-        st.markdown("---")
-        
-        col_alert1, col_alert2 = st.columns(2)
-        
-        with col_alert1:
-            st.subheader("🚨 Alertas de Estoque Baixo")
-            
-            cursor.execute("""
-            SELECT codigo, descricao, quantidade_atual, quantidade_minima, unidade
-            FROM insumos 
-            WHERE quantidade_atual <= quantidade_minima AND ativo = 1
-            ORDER BY (quantidade_atual/quantidade_minima) ASC
-            LIMIT 5
-            """)
-            
-            alertas_estoque_detalhes = cursor.fetchall()
-            
-            if alertas_estoque_detalhes:
-                for alerta in alertas_estoque_detalhes:
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="alert-card">
-                            <strong>📦 {alerta['codigo']}</strong><br>
-                            {alerta['descricao']}<br>
-                            <small>Atual: {alerta['quantidade_atual']} {alerta['unidade']} | 
-                            Mínimo: {alerta['quantidade_minima']} {alerta['unidade']}</small>
-                        </div>
-                        """, unsafe_allow_html=True)
-            else:
-                st.success("✅ Todos os estoques estão adequados!")
-        
-        with col_alert2:
-            st.subheader("⚡ Status dos Equipamentos")
-            
-            cursor.execute("""
-            SELECT status, COUNT(*) as quantidade 
-            FROM equipamentos_eletricos 
-            WHERE ativo = 1 
-            GROUP BY status
-            """)
-            
-            status_equipamentos = cursor.fetchall()
-            
-            for status in status_equipamentos:
-                color_class = {
-                    'Disponível': 'success-card',
-                    'Em uso': 'warning-card',
-                    'Manutenção': 'alert-card',
-                    'Inativo': 'alert-card',
-                    'Danificado': 'alert-card'
-                }.get(status['status'], 'success-card')
-                
-                st.markdown(f"""
-                <div class="{color_class}">
-                    <strong>⚡ {status['status']}</strong><br>
-                    {status['quantidade']} equipamentos
-                </div>
-                """, unsafe_allow_html=True)
-        
-        # Últimas movimentações
-        st.markdown("---")
-        st.subheader("📋 Últimas Movimentações")
+        # Atividade recente
+        st.subheader("📈 Atividade Recente")
+        cursor.execute("""
+            SELECT COUNT(*) as movimentacoes_hoje 
+            FROM movimentacoes 
+            WHERE DATE(data_movimentacao) = DATE('now')
+        """)
+        mov_hoje = cursor.fetchone()[0] or 0
         
         cursor.execute("""
-        SELECT tipo, tipo_item, codigo_item, descricao_item, quantidade, unidade, 
-               data_movimentacao, usuario_id
-        FROM movimentacoes 
-        ORDER BY data_movimentacao DESC 
-        LIMIT 10
+            SELECT COUNT(*) as movimentacoes_semana 
+            FROM movimentacoes 
+            WHERE DATE(data_movimentacao) >= DATE('now', '-7 days')
         """)
+        mov_semana = cursor.fetchone()[0] or 0
         
-        movimentacoes_recentes = cursor.fetchall()
-        
-        if movimentacoes_recentes:
-            df_movimentacoes = pd.DataFrame([dict(mov) for mov in movimentacoes_recentes])
+        col1, col2 = st.columns(2)
+        with col1:
+            st.info(f"📊 **{mov_hoje}** movimentações hoje")
+        with col2:
+            st.info(f"📊 **{mov_semana}** movimentações esta semana")
             
-            # Formatar dados para exibição
-            df_movimentacoes['Data/Hora'] = pd.to_datetime(df_movimentacoes['data_movimentacao']).dt.strftime('%d/%m/%Y %H:%M')
-            df_movimentacoes['Tipo'] = df_movimentacoes['tipo'].str.title()
-            df_movimentacoes['Item'] = df_movimentacoes['tipo_item'].str.replace('_', ' ').str.title()
-            df_movimentacoes['Código'] = df_movimentacoes['codigo_item']
-            df_movimentacoes['Descrição'] = df_movimentacoes['descricao_item']
-            df_movimentacoes['Qtd'] = df_movimentacoes['quantidade'].astype(str) + ' ' + df_movimentacoes['unidade'].fillna('')
-            
-            # Exibir tabela
-            st.dataframe(
-                df_movimentacoes[['Data/Hora', 'Tipo', 'Item', 'Código', 'Descrição', 'Qtd']],
-                use_container_width=True,
-                hide_index=True
-            )
-        else:
-            st.info("📝 Nenhuma movimentação registrada ainda.")
-    
     except Exception as e:
         st.error(f"Erro ao carregar dashboard: {e}")
+        import traceback
+        st.error(f"Detalhes do erro: {traceback.format_exc()}")
 
 # Sidebar com menu de navegação
 def show_sidebar():
@@ -561,7 +359,7 @@ def show_sidebar():
         st.markdown("---")
         
         # Botão de logout
-        if st.button("🚪 Sair do Sistema", use_container_width=True):
+        if st.button("🚪 Sair do Sistema", width='stretch'):
             if 'session_token' in st.session_state:
                 auth_manager.logout_user(token=st.session_state.session_token)
             
@@ -579,16 +377,9 @@ def main():
     # Carregar CSS
     load_css()
     
-    # Verificar se deve mostrar página de registro
-    if 'show_register' not in st.session_state:
-        st.session_state.show_register = False
-    
-    # Verificar autenticação
+    # Verificar autenticação - apenas página de login
     if not check_authentication():
-        if st.session_state.show_register:
-            show_register_page()
-        else:
-            show_login_page()
+        show_login_page()
         return
     
     # Usuário autenticado - mostrar aplicação
@@ -615,11 +406,9 @@ def main():
     elif selected_page == "Logs de Auditoria":
         show_logs_auditoria_page()
     elif selected_page == "Usuários":
-        st.title("👥 Gestão de Usuários")
-        st.info("🚧 Módulo em desenvolvimento - será implementado na próxima etapa!")
+        show_usuarios_page()
     elif selected_page == "Configurações":
-        st.title("⚙️ Configurações do Sistema")
-        st.info("🚧 Módulo em desenvolvimento - será implementado na próxima etapa!")
+        show_configuracoes_page()
 
 if __name__ == "__main__":
     main()

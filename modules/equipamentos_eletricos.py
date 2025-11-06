@@ -1,235 +1,204 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime  # type: ignore
 from database.connection import db
 from modules.auth import auth_manager
+from typing import Any
 
 class EquipamentosEletricosManager:
     def __init__(self):
-        self.db = db
-    
-    def create_equipamento(self, data):
+        self.db: Any = db
+
+    def create_equipamento(self, data: dict[str, Any]) -> int | None:
         """Cria um novo equipamento elétrico"""
         try:
-            cursor = self.db.conn.cursor()
-            
+            cursor = self.db.conn.cursor()  # type: ignore
             cursor.execute("""
-                INSERT INTO categorias (nome, tipo, descricao) 
-                VALUES (?, ?, ?)
-            """, (data['categoria'], 'Equipamento Elétrico', data.get('descricao_categoria', '')))
-            categoria_id = cursor.lastrowid
-            
-            cursor.execute("""
-                INSERT INTO itens_inventario (
-                    categoria_id, nome, descricao, codigo_patrimonial,
-                    valor_unitario, quantidade_atual, quantidade_minima,
-                    unidade_medida, localizacao, status, tipo_item,
-                    voltagem, amperagem, potencia, marca, modelo,
-                    numero_serie, data_aquisicao, vida_util_anos,
-                    data_ultima_manutencao, proxima_manutencao
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO equipamentos_eletricos (
+                    codigo, nome, marca, modelo, numero_serie, voltagem, potencia, 
+                    status, localizacao, valor_compra, observacoes, ativo, criado_por
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                categoria_id, data['nome'], data['descricao'], data['codigo_patrimonial'],
-                data['valor_unitario'], data['quantidade_atual'], data['quantidade_minima'],
-                data['unidade_medida'], data['localizacao'], data['status'], 'Equipamento Elétrico',
-                data['voltagem'], data['amperagem'], data['potencia'], data['marca'],
-                data['modelo'], data['numero_serie'], data['data_aquisicao'],
-                data['vida_util_anos'], data['data_ultima_manutencao'], data['proxima_manutencao']
+                data.get('codigo', ''),
+                data['nome'],
+                data.get('marca', ''),
+                data.get('modelo', ''),
+                data.get('numero_serie', ''),
+                data.get('voltagem', ''),
+                data.get('potencia', ''),
+                data.get('status', 'Disponível'),
+                data.get('localizacao', 'Almoxarifado'),
+                data.get('valor_compra', 0.0),
+                data.get('observacoes', ''),
+                1,  # ativo
+                1   # criado_por (usuário admin padrão)
             ))
-            
             equipamento_id = cursor.lastrowid
-            self.db.conn.commit()
+            self.db.conn.commit()  # type: ignore
             
             # Log da ação
             auth_manager.log_action(
+                1,  # id do usuário
                 f"Criou equipamento elétrico: {data['nome']} (ID: {equipamento_id})",
                 "Equipamentos Elétricos",
-                "CREATE"
+                equipamento_id
             )
             
             return equipamento_id
         except Exception as e:
-            self.db.conn.rollback()
+            self.db.conn.rollback()  # type: ignore
             st.error(f"Erro ao criar equipamento: {e}")
             return None
     
-    def get_equipamentos(self, filters=None):
+    def get_equipamentos(self, filters: dict[str, Any] | None = None) -> pd.DataFrame:
         """Busca equipamentos elétricos com filtros"""
         try:
-            cursor = self.db.conn.cursor()
-            
-            query = """
-                SELECT 
-                    i.id, i.nome, i.descricao, i.codigo_patrimonial,
-                    i.valor_unitario, i.quantidade_atual, i.quantidade_minima,
-                    i.unidade_medida, i.localizacao, i.status,
-                    i.voltagem, i.amperagem, i.potencia, i.marca, i.modelo,
-                    i.numero_serie, i.data_aquisicao, i.vida_util_anos,
-                    i.data_ultima_manutencao, i.proxima_manutencao,
-                    c.nome as categoria_nome
-                FROM itens_inventario i
-                LEFT JOIN categorias c ON i.categoria_id = c.id
-                WHERE i.tipo_item = 'Equipamento Elétrico'
-            """
-            params = []
+            cursor = self.db.conn.cursor()  # type: ignore
+            query = """SELECT id, codigo, nome, marca, modelo, status, localizacao, valor_compra, 
+                       voltagem, potencia, numero_serie, observacoes FROM equipamentos_eletricos WHERE ativo = 1"""
+            params: list[Any] = []
             
             if filters:
                 if filters.get('nome'):
-                    query += " AND i.nome LIKE ?"
+                    query += " AND nome LIKE ?"
                     params.append(f"%{filters['nome']}%")
                 if filters.get('categoria'):
-                    query += " AND c.nome = ?"
+                    query += " AND categoria_id = ?"
                     params.append(filters['categoria'])
                 if filters.get('status'):
-                    query += " AND i.status = ?"
+                    query += " AND status = ?"
                     params.append(filters['status'])
                 if filters.get('marca'):
-                    query += " AND i.marca LIKE ?"
+                    query += " AND marca LIKE ?"
                     params.append(f"%{filters['marca']}%")
                 if filters.get('localizacao'):
-                    query += " AND i.localizacao LIKE ?"
+                    query += " AND localizacao LIKE ?"
                     params.append(f"%{filters['localizacao']}%")
-                if filters.get('voltagem'):
-                    query += " AND i.voltagem = ?"
-                    params.append(filters['voltagem'])
+                    
+            query += " ORDER BY nome"
             
-            query += " ORDER BY i.nome"
-            
-            cursor.execute(query, params)
+            cursor.execute(query, params)  # type: ignore
             results = cursor.fetchall()
             
-            columns = [
-                'id', 'nome', 'descricao', 'codigo_patrimonial', 'valor_unitario',
-                'quantidade_atual', 'quantidade_minima', 'unidade_medida',
-                'localizacao', 'status', 'voltagem', 'amperagem', 'potencia',
-                'marca', 'modelo', 'numero_serie', 'data_aquisicao',
-                'vida_util_anos', 'data_ultima_manutencao', 'proxima_manutencao',
-                'categoria_nome'
-            ]
-            
+            columns = ['id', 'codigo', 'nome', 'marca', 'modelo', 'status', 'localizacao', 'valor_compra', 
+                      'voltagem', 'potencia', 'numero_serie', 'observacoes']
             return pd.DataFrame(results, columns=columns) if results else pd.DataFrame()
             
         except Exception as e:
             st.error(f"Erro ao buscar equipamentos: {e}")
             return pd.DataFrame()
     
-    def update_equipamento(self, equipamento_id, data):
+    def update_equipamento(self, equipamento_id: int, data: dict[str, Any]) -> bool:
         """Atualiza um equipamento elétrico"""
         try:
-            cursor = self.db.conn.cursor()
+            cursor = self.db.conn.cursor()  # type: ignore
             
             cursor.execute("""
-                UPDATE itens_inventario SET
-                    nome = ?, descricao = ?, codigo_patrimonial = ?,
-                    valor_unitario = ?, quantidade_atual = ?, quantidade_minima = ?,
-                    unidade_medida = ?, localizacao = ?, status = ?,
-                    voltagem = ?, amperagem = ?, potencia = ?, marca = ?,
-                    modelo = ?, numero_serie = ?, data_aquisicao = ?,
-                    vida_util_anos = ?, data_ultima_manutencao = ?, proxima_manutencao = ?
+                UPDATE equipamentos_eletricos SET
+                    codigo = ?, nome = ?, marca = ?, modelo = ?, numero_serie = ?,
+                    voltagem = ?, potencia = ?, status = ?, localizacao = ?, 
+                    valor_compra = ?, observacoes = ?
                 WHERE id = ?
             """, (
-                data['nome'], data['descricao'], data['codigo_patrimonial'],
-                data['valor_unitario'], data['quantidade_atual'], data['quantidade_minima'],
-                data['unidade_medida'], data['localizacao'], data['status'],
-                data['voltagem'], data['amperagem'], data['potencia'], data['marca'],
-                data['modelo'], data['numero_serie'], data['data_aquisicao'],
-                data['vida_util_anos'], data['data_ultima_manutencao'], data['proxima_manutencao'],
+                data.get('codigo', ''),
+                data['nome'],
+                data.get('marca', ''),
+                data.get('modelo', ''),
+                data.get('numero_serie', ''),
+                data.get('voltagem', ''),
+                data.get('potencia', ''),
+                data.get('status', 'Disponível'),
+                data.get('localizacao', 'Almoxarifado'),
+                data.get('valor_compra', 0.0),
+                data.get('observacoes', ''),
                 equipamento_id
             ))
             
-            self.db.conn.commit()
+            self.db.conn.commit()  # type: ignore
             
             # Log da ação
             auth_manager.log_action(
+                1,  # id do usuário
                 f"Atualizou equipamento elétrico: {data['nome']} (ID: {equipamento_id})",
                 "Equipamentos Elétricos",
-                "UPDATE"
+                equipamento_id
             )
             
             return True
         except Exception as e:
-            self.db.conn.rollback()
+            self.db.conn.rollback()  # type: ignore
             st.error(f"Erro ao atualizar equipamento: {e}")
             return False
     
-    def delete_equipamento(self, equipamento_id, nome):
+    def delete_equipamento(self, equipamento_id: int, nome: str) -> bool:
         """Remove um equipamento elétrico"""
         try:
-            cursor = self.db.conn.cursor()
+            cursor = self.db.conn.cursor()  # type: ignore
             
-            cursor.execute("DELETE FROM itens_inventario WHERE id = ?", (equipamento_id,))
-            self.db.conn.commit()
+            cursor.execute("DELETE FROM equipamentos_eletricos WHERE id = ?", (equipamento_id,))
+            self.db.conn.commit()  # type: ignore
             
             # Log da ação
             auth_manager.log_action(
+                1,  # id do usuário
                 f"Removeu equipamento elétrico: {nome} (ID: {equipamento_id})",
                 "Equipamentos Elétricos",
-                "DELETE"
+                equipamento_id
             )
             
             return True
         except Exception as e:
-            self.db.conn.rollback()
+            self.db.conn.rollback()  # type: ignore
             st.error(f"Erro ao remover equipamento: {e}")
             return False
     
-    def get_categorias(self):
-        """Busca categorias de equipamentos elétricos"""
+    def get_categorias(self) -> list[str]:
+        """Busca categorias de equipamentos elétricos da tabela categorias"""
         try:
-            cursor = self.db.conn.cursor()
+            cursor = self.db.conn.cursor()  # type: ignore
             cursor.execute("""
-                SELECT DISTINCT c.nome 
-                FROM categorias c
-                JOIN itens_inventario i ON c.id = i.categoria_id
-                WHERE i.tipo_item = 'Equipamento Elétrico'
+                SELECT c.nome FROM categorias c 
+                WHERE c.tipo = 'equipamento_eletrico' OR c.tipo IS NULL
                 ORDER BY c.nome
             """)
             return [row[0] for row in cursor.fetchall()]
         except:
-            return []
+            return ['Ferramentas Elétricas', 'Motores', 'Equipamentos de Medição']
     
-    def get_status_options(self):
+    def get_status_options(self) -> list[str]:
         """Retorna opções de status para equipamentos"""
-        return ['Ativo', 'Inativo', 'Manutenção', 'Disponível', 'Em Uso', 'Danificado']
+        return ['Disponível', 'Em Uso', 'Manutenção', 'Danificado', 'Inativo']
     
-    def get_voltagem_options(self):
-        """Retorna opções de voltagem"""
-        return ['110V', '220V', '380V', '440V', '12V', '24V', '48V']
-    
-    def get_dashboard_stats(self):
+    def get_dashboard_stats(self) -> dict[str, Any]:
         """Estatísticas para o dashboard"""
         try:
-            cursor = self.db.conn.cursor()
-            
+            cursor = self.db.conn.cursor()  # type: ignore
             cursor.execute("""
                 SELECT 
                     COUNT(*) as total,
-                    SUM(CASE WHEN status = 'Ativo' THEN 1 ELSE 0 END) as ativos,
+                    SUM(CASE WHEN status = 'Disponível' THEN 1 ELSE 0 END) as disponiveis,
                     SUM(CASE WHEN status = 'Manutenção' THEN 1 ELSE 0 END) as manutencao,
-                    SUM(valor_unitario * quantidade_atual) as valor_total
-                FROM itens_inventario 
-                WHERE tipo_item = 'Equipamento Elétrico'
+                    SUM(CASE WHEN valor_compra IS NOT NULL THEN valor_compra ELSE 0 END) as valor_total
+                FROM equipamentos_eletricos
             """)
-            
             result = cursor.fetchone()
             return {
                 'total': result[0] or 0,
-                'ativos': result[1] or 0,
+                'disponiveis': result[1] or 0,
                 'manutencao': result[2] or 0,
                 'valor_total': result[3] or 0
             }
         except:
-            return {'total': 0, 'ativos': 0, 'manutencao': 0, 'valor_total': 0}
+            return {'total': 0, 'disponiveis': 0, 'manutencao': 0, 'valor_total': 0}
 
 def show_equipamentos_eletricos_page():
     """Interface principal dos equipamentos elétricos"""
     
     st.title("⚡ Equipamentos Elétricos")
-    
-    if not auth_manager.check_permission("equipamentos_eletricos", "read"):
+    user_data = st.session_state.user_data
+    if not auth_manager.check_permission(user_data['perfil'], "read"):
         st.error("❌ Você não tem permissão para acessar esta página.")
         return
-    
     manager = EquipamentosEletricosManager()
     
     # Abas principais
@@ -237,31 +206,19 @@ def show_equipamentos_eletricos_page():
     
     with tab1:
         st.subheader("Lista de Equipamentos Elétricos")
-        
         # Filtros
-        with st.expander("🔍 Filtros", expanded=False):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                filtro_nome = st.text_input("Nome do Equipamento")
-                filtro_categoria = st.selectbox(
-                    "Categoria", 
-                    ["Todas"] + manager.get_categorias()
-                )
-            with col2:
-                filtro_status = st.selectbox(
-                    "Status", 
-                    ["Todos"] + manager.get_status_options()
-                )
-                filtro_marca = st.text_input("Marca")
-            with col3:
-                filtro_localizacao = st.text_input("Localização")
-                filtro_voltagem = st.selectbox(
-                    "Voltagem",
-                    ["Todas"] + manager.get_voltagem_options()
-                )
-        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            filtro_nome = st.text_input("Nome do Equipamento")
+        with col2:
+            filtro_categoria = st.selectbox("Categoria", ["Todas"] + manager.get_categorias())
+        with col3:
+            filtro_status = st.selectbox("Status", ["Todos"] + manager.get_status_options())
+        with col4:
+            filtro_marca = st.text_input("Marca")
+
         # Aplicar filtros
-        filters = {}
+        filters: dict[str, Any] = {}
         if filtro_nome:
             filters['nome'] = filtro_nome
         if filtro_categoria != "Todas":
@@ -270,167 +227,231 @@ def show_equipamentos_eletricos_page():
             filters['status'] = filtro_status
         if filtro_marca:
             filters['marca'] = filtro_marca
-        if filtro_localizacao:
-            filters['localizacao'] = filtro_localizacao
-        if filtro_voltagem != "Todas":
-            filters['voltagem'] = filtro_voltagem
-        
+
         # Buscar equipamentos
-        df = manager.get_equipamentos(filters)
-        
+        equipamentos = manager.get_equipamentos(filters)  # type: ignore
+        df = equipamentos.copy() if not equipamentos.empty else pd.DataFrame()
+
         if not df.empty:
-            # Configurar exibição do dataframe
-            st.dataframe(
-                df[['nome', 'categoria_nome', 'marca', 'modelo', 'voltagem', 
-                   'localizacao', 'status', 'quantidade_atual', 'valor_unitario']],
-                column_config={
-                    'nome': 'Nome',
-                    'categoria_nome': 'Categoria',
-                    'marca': 'Marca',
-                    'modelo': 'Modelo',
-                    'voltagem': 'Voltagem',
-                    'localizacao': 'Localização',
-                    'status': 'Status',
-                    'quantidade_atual': 'Quantidade',
-                    'valor_unitario': st.column_config.NumberColumn(
-                        'Valor Unitário',
-                        format="R$ %.2f"
-                    )
-                },
-                use_container_width=True,
-                hide_index=True
-            )
-            
-            # Ações em lote
-            if auth_manager.check_permission("equipamentos_eletricos", "update"):
-                st.subheader("Ações")
-                
-                selected_ids = st.multiselect(
-                    "Selecionar equipamentos para ação:",
-                    options=df['id'].tolist(),
-                    format_func=lambda x: df[df['id'] == x]['nome'].iloc[0]
-                )
-                
-                if selected_ids:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("🔧 Marcar para Manutenção"):
-                            for eq_id in selected_ids:
-                                eq_data = df[df['id'] == eq_id].iloc[0].to_dict()
-                                eq_data['status'] = 'Manutenção'
-                                manager.update_equipamento(eq_id, eq_data)
-                            st.success("Equipamentos marcados para manutenção!")
+            # Estatísticas rápidas
+            total_eq = len(df)
+            disponiveis = sum(1 for _, r in df.iterrows() if r['status'] == 'Disponível')
+            em_uso = sum(1 for _, r in df.iterrows() if r['status'] == 'Em Uso')
+            manutencao = sum(1 for _, r in df.iterrows() if r['status'] == 'Manutenção')
+            col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+            col_stat1.metric("Total de Equipamentos", total_eq)
+            col_stat2.metric("Disponíveis", disponiveis)
+            col_stat3.metric("Em Uso", em_uso)
+            col_stat4.metric("Em Manutenção", manutencao)
+
+            # Paginação
+            num_rows = st.selectbox("Linhas por página:", options=[10, 20, 30, 50, 100], index=2)
+            total_pages = (len(df) - 1) // num_rows + 1
+            if 'page_eq' not in st.session_state:
+                st.session_state.page_eq = 1
+            if st.session_state.page_eq > total_pages:
+                st.session_state.page_eq = total_pages
+            if st.session_state.page_eq < 1:
+                st.session_state.page_eq = 1
+            page = st.session_state.page_eq
+            start_idx = (page - 1) * num_rows
+            end_idx = start_idx + num_rows
+            df_paginado = df.iloc[start_idx:end_idx]
+
+            # Cabeçalho da tabela
+            col_header = st.columns([0.8, 1.5, 1.2, 1.2, 1, 1, 1, 1, 1, 1, 1, 1])
+            headers = ["Código", "Nome", "Marca", "Modelo", "Status", "Localização", "Valor Compra", "Voltagem", "Potência", "Editar", "Mover", "Ação"]
+            for i, h in enumerate(headers):
+                with col_header[i]:
+                    st.write(f"**{h}**")
+            st.write("---")
+
+            # Exibir tabela com botões de edição
+            for _, row in df_paginado.iterrows():
+                with st.container():
+                    cols = st.columns([0.8, 1.5, 1.2, 1.2, 1, 1, 1, 1, 1, 1, 1, 1])
+                    with cols[0]:
+                        st.write(f"**{row['codigo']}**")
+                    with cols[1]:
+                        st.write(row['nome'])
+                    with cols[2]:
+                        st.write(row['marca'])
+                    with cols[3]:
+                        st.write(row['modelo'])
+                    with cols[4]:
+                        st.write(row['status'])
+                    with cols[5]:
+                        localizacao = row['localizacao'] if row['localizacao'] else 'Almoxarifado'
+                        st.markdown(f'''<span style="position:relative;cursor:pointer;" title="Localização atual: {localizacao}">{localizacao} <span style='color:#888'>&#9432;</span></span>''', unsafe_allow_html=True)
+                    with cols[6]:
+                        st.write(f"R$ {row['valor_compra']:,.2f}")
+                    with cols[7]:
+                        st.write(row['voltagem'])
+                    with cols[8]:
+                        st.write(row['potencia'])
+                    with cols[9]:
+                        if st.button("✏️", key=f"edit_eq_{row['id']}", help="Editar equipamento"):
+                            st.session_state[f'edit_mode_eq_{row["id"]}'] = True
                             st.rerun()
-                    
-                    with col2:
-                        if auth_manager.check_permission("equipamentos_eletricos", "delete"):
-                            if st.button("🗑️ Remover Selecionados", type="secondary"):
-                                for eq_id in selected_ids:
-                                    nome = df[df['id'] == eq_id]['nome'].iloc[0]
-                                    manager.delete_equipamento(eq_id, nome)
-                                st.success("Equipamentos removidos!")
+                    with cols[10]:
+                        if st.button("📦", key=f"move_eq_{row['id']}", help="Movimentar equipamento"):
+                            st.session_state[f'move_mode_eq_{row["id"]}'] = True
+                            st.rerun()
+                    with cols[11]:
+                        if st.button("❌", key=f"del_eq_{row['id']}", help="Excluir equipamento"):
+                            if manager.delete_equipamento(int(row['id']), row['nome']):
+                                st.success(f"Equipamento {row['nome']} removido com sucesso!")
                                 st.rerun()
+
+                # Modal de edição
+                if st.session_state.get(f'edit_mode_eq_{row["id"]}', False):
+                    with st.expander(f"🔧 Editando: {row['codigo']} - {row['nome']}", expanded=True):
+                        col_ed1, col_ed2 = st.columns(2)
+                        with col_ed1:
+                            novo_nome = st.text_input("Nome:", value=row['nome'], key=f"nome_eq_{row['id']}")
+                            nova_marca = st.text_input("Marca:", value=row['marca'], key=f"marca_eq_{row['id']}")
+                            novo_modelo = st.text_input("Modelo:", value=row['modelo'], key=f"modelo_eq_{row['id']}")
+                            novo_numero_serie = st.text_input("Número de Série:", value=row['numero_serie'], key=f"numserie_eq_{row['id']}")
+                            nova_voltagem = st.text_input("Voltagem:", value=row['voltagem'], key=f"voltagem_eq_{row['id']}")
+                            nova_potencia = st.text_input("Potência:", value=row['potencia'], key=f"potencia_eq_{row['id']}")
+                        with col_ed2:
+                            novo_status = st.selectbox("Status:", manager.get_status_options(), index=manager.get_status_options().index(row['status']) if row['status'] in manager.get_status_options() else 0, key=f"status_eq_{row['id']}")
+                            nova_localizacao = st.text_input("Localização:", value=row['localizacao'], key=f"localizacao_eq_{row['id']}")
+                            novo_valor_compra = st.number_input("Valor Compra:", min_value=0.0, value=float(row['valor_compra']), key=f"valorcompra_eq_{row['id']}")
+                            novas_observacoes = st.text_area("Observações:", value=row['observacoes'], key=f"obs_eq_{row['id']}")
+
+                        col_btn1, col_btn2 = st.columns(2)
+                        with col_btn1:
+                            if st.button("💾 Salvar", key=f"save_eq_{row['id']}", type="primary"):
+                                dados_update: dict[str, Any] = {
+                                    'codigo': row['codigo'],
+                                    'nome': novo_nome,
+                                    'marca': nova_marca,
+                                    'modelo': novo_modelo,
+                                    'numero_serie': novo_numero_serie,
+                                    'voltagem': nova_voltagem,
+                                    'potencia': nova_potencia,
+                                    'status': novo_status,
+                                    'localizacao': nova_localizacao,
+                                    'valor_compra': float(novo_valor_compra),
+                                    'observacoes': novas_observacoes
+                                }
+                                success = manager.update_equipamento(int(row['id']), dados_update)  # type: ignore
+                                if success:
+                                    st.success(f"Equipamento {row['codigo']} atualizado com sucesso!")
+                                    del st.session_state[f'edit_mode_eq_{row["id"]}']
+                                    st.rerun()
+                                else:
+                                    st.error("Erro ao atualizar equipamento.")
+                        with col_btn2:
+                            if st.button("❌ Cancelar", key=f"cancel_eq_{row['id']}"):
+                                del st.session_state[f"edit_mode_eq_{row['id']}"]
+                                st.rerun()
+                    st.divider()
+                
+                # Modal de movimentação
+                if st.session_state.get(f'move_mode_eq_{row["id"]}', False):
+                    from modules.movimentacao_modal import show_movimentacao_modal_equipamento_eletrico  # type: ignore
+                    show_movimentacao_modal_equipamento_eletrico(int(row['id']))
+                    
+                    # Botão para fechar o modal
+                    if st.button("❌ Fechar", key=f"close_move_eq_{row['id']}"):
+                        del st.session_state[f'move_mode_eq_{row["id"]}']
+                        st.rerun()
+                    
+                    st.divider()
+
+            # Navegação com botões
+            if total_pages > 1:
+                col_nav1, col_nav2, col_nav3, col_nav4, col_nav5 = st.columns([1, 1, 2, 1, 1])
+                with col_nav1:
+                    if st.button("⏮️ Primeira", key="primeira_eq") and page > 1:
+                        st.session_state.page_eq = 1
+                        st.rerun()
+                with col_nav2:
+                    if st.button("⬅️ Anterior", key="anterior_eq") and page > 1:
+                        st.session_state.page_eq = page - 1
+                        st.rerun()
+                with col_nav3:
+                    st.write(f"Página {page} de {total_pages}")
+                with col_nav4:
+                    if st.button("➡️ Próxima", key="proxima_eq") and page < total_pages:
+                        st.session_state.page_eq = page + 1
+                        st.rerun()
+                with col_nav5:
+                    if st.button("⏭️ Última", key="ultima_eq") and page < total_pages:
+                        st.session_state.page_eq = total_pages
+                        st.rerun()
+
+            # Botão de atualizar
+            if st.button("🔄 Atualizar", key="atualizar_eq", width='stretch'):
+                st.rerun()
         else:
             st.info("📭 Nenhum equipamento encontrado com os filtros aplicados.")
     
     with tab2:
-        if not auth_manager.check_permission("equipamentos_eletricos", "create"):
+        if not auth_manager.check_permission(user_data['perfil'], "create"):
             st.error("❌ Você não tem permissão para adicionar equipamentos.")
             return
-        
+            
         st.subheader("Adicionar Novo Equipamento Elétrico")
-        
         with st.form("form_equipamento"):
-            # Informações básicas
-            st.markdown("### Informações Básicas")
+            # Buscar equipamentos existentes para gerar código sequencial
+            equipamentos_existentes = manager.get_equipamentos()
+            ultimo_codigo = "EQ-0001"
+            if not equipamentos_existentes.empty:
+                codigos = [str(eq['codigo']) for _, eq in equipamentos_existentes.iterrows() if str(eq['codigo']).startswith("EQ-")]
+                numeros = []
+                for cod in codigos:
+                    try:
+                        numeros.append(int(cod.replace("EQ-", "")))  # type: ignore
+                    except:
+                        pass
+                if numeros:
+                    proximo_num: int = max(numeros) + 1  # type: ignore
+                    ultimo_codigo = f"EQ-{proximo_num:04d}"
             col1, col2 = st.columns(2)
-            
             with col1:
+                st.text_input("* Código", value=ultimo_codigo, disabled=True)
+                codigo = ultimo_codigo
                 nome = st.text_input("Nome do Equipamento *", placeholder="Ex: Motor Elétrico")
-                categoria = st.text_input("Categoria *", placeholder="Ex: Motores")
-                codigo = st.text_input("Código Patrimonial", placeholder="EE001")
-                marca = st.text_input("Marca *", placeholder="Ex: WEG")
+                marca = st.text_input("Marca", placeholder="Ex: WEG")
                 modelo = st.text_input("Modelo", placeholder="Ex: W22")
-                numero_serie = st.text_input("Número de Série")
-            
+                numero_serie = st.text_input("Número de Série", placeholder="Ex: ABC123")
+                voltagem = st.text_input("Voltagem", placeholder="Ex: 220V")
             with col2:
-                descricao = st.text_area("Descrição", placeholder="Descrição detalhada do equipamento")
-                localizacao = st.text_input("Localização *", placeholder="Ex: Galpão A - Setor 1")
-                status = st.selectbox("Status *", manager.get_status_options())
-                unidade_medida = st.selectbox("Unidade", ["UN", "PC", "JG", "KT"])
-                quantidade_atual = st.number_input("Quantidade Atual *", min_value=0, value=1)
-                quantidade_minima = st.number_input("Quantidade Mínima", min_value=0, value=1)
-            
-            # Especificações técnicas
-            st.markdown("### Especificações Técnicas")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                voltagem = st.selectbox("Voltagem *", manager.get_voltagem_options())
-                amperagem = st.number_input("Amperagem (A)", min_value=0.0, step=0.1)
-            
-            with col2:
-                potencia = st.number_input("Potência (W)", min_value=0.0, step=0.1)
-                vida_util = st.number_input("Vida Útil (anos)", min_value=1, value=10)
-            
-            with col3:
-                valor_unitario = st.number_input("Valor Unitário (R$) *", min_value=0.0, step=0.01)
-                data_aquisicao = st.date_input("Data de Aquisição", value=date.today())
-            
-            # Manutenção
-            st.markdown("### Manutenção")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                data_ultima_manutencao = st.date_input(
-                    "Última Manutenção", 
-                    value=None,
-                    help="Deixe vazio se nunca foi feita manutenção"
-                )
-            
-            with col2:
-                proxima_manutencao = st.date_input(
-                    "Próxima Manutenção",
-                    value=None,
-                    help="Data prevista para próxima manutenção"
-                )
-            
+                potencia = st.text_input("Potência", placeholder="Ex: 1000W")
+                status = st.selectbox("Status", manager.get_status_options())
+                localizacao = st.text_input("Localização", placeholder="Ex: Almoxarifado")
+                valor_compra = st.number_input("Valor de Compra", min_value=0.0, step=0.01)
+                observacoes = st.text_area("Observações", placeholder="Observações gerais")
+
             submitted = st.form_submit_button("💾 Cadastrar Equipamento", type="primary")
-            
+
             if submitted:
-                if nome and categoria and marca and localizacao and voltagem and valor_unitario:
-                    data = {
+                if nome:
+                    data: dict[str, Any] = {
+                        'codigo': codigo,
                         'nome': nome,
-                        'categoria': categoria,
-                        'descricao': descricao,
-                        'codigo_patrimonial': codigo,
                         'marca': marca,
                         'modelo': modelo,
                         'numero_serie': numero_serie,
-                        'localizacao': localizacao,
-                        'status': status,
-                        'unidade_medida': unidade_medida,
-                        'quantidade_atual': quantidade_atual,
-                        'quantidade_minima': quantidade_minima,
                         'voltagem': voltagem,
-                        'amperagem': amperagem,
                         'potencia': potencia,
-                        'valor_unitario': valor_unitario,
-                        'vida_util_anos': vida_util,
-                        'data_aquisicao': data_aquisicao.strftime('%Y-%m-%d'),
-                        'data_ultima_manutencao': data_ultima_manutencao.strftime('%Y-%m-%d') if data_ultima_manutencao else None,
-                        'proxima_manutencao': proxima_manutencao.strftime('%Y-%m-%d') if proxima_manutencao else None
+                        'status': status,
+                        'localizacao': localizacao,
+                        'valor_compra': valor_compra,
+                        'observacoes': observacoes
                     }
-                    
-                    equipamento_id = manager.create_equipamento(data)
+                    equipamento_id = manager.create_equipamento(data)  # type: ignore
                     if equipamento_id:
                         st.success(f"✅ Equipamento '{nome}' cadastrado com sucesso! (ID: {equipamento_id})")
                         st.rerun()
                 else:
-                    st.error("❌ Preencha todos os campos obrigatórios marcados com *")
+                    st.error("❌ Preencha o nome do equipamento!")
     
     with tab3:
-        st.subheader("Estatísticas dos Equipamentos Elétricos")
+        st.subheader("📊 Estatísticas dos Equipamentos Elétricos")
         
         stats = manager.get_dashboard_stats()
         
@@ -441,51 +462,10 @@ def show_equipamentos_eletricos_page():
             st.metric("Total de Equipamentos", stats['total'])
         
         with col2:
-            st.metric("Equipamentos Ativos", stats['ativos'])
+            st.metric("Equipamentos Disponíveis", stats['disponiveis'])
         
         with col3:
             st.metric("Em Manutenção", stats['manutencao'])
         
         with col4:
             st.metric("Valor Total", f"R$ {stats['valor_total']:,.2f}")
-        
-        # Gráficos
-        if stats['total'] > 0:
-            df_stats = manager.get_equipamentos()
-            
-            if not df_stats.empty:
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # Gráfico por status
-                    status_counts = df_stats['status'].value_counts()
-                    st.plotly_chart(
-                        {
-                            'data': [{
-                                'type': 'pie',
-                                'labels': status_counts.index.tolist(),
-                                'values': status_counts.values.tolist(),
-                                'title': 'Distribuição por Status'
-                            }],
-                            'layout': {'title': 'Equipamentos por Status'}
-                        },
-                        use_container_width=True
-                    )
-                
-                with col2:
-                    # Gráfico por categoria
-                    categoria_counts = df_stats['categoria_nome'].value_counts()
-                    st.plotly_chart(
-                        {
-                            'data': [{
-                                'type': 'bar',
-                                'x': categoria_counts.index.tolist(),
-                                'y': categoria_counts.values.tolist()
-                            }],
-                            'layout': {'title': 'Equipamentos por Categoria'}
-                        },
-                        use_container_width=True
-                    )
-
-# Instância global
-equipamentos_eletricos_manager = EquipamentosEletricosManager()

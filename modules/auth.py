@@ -4,9 +4,8 @@ Gerenciamento de usuários, login, permissões e auditoria
 """
 
 import streamlit as st
+from typing import Any
 import bcrypt
-import sqlite3
-import hashlib
 import secrets
 from datetime import datetime, timedelta
 import re
@@ -33,9 +32,9 @@ class AuthenticationManager:
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         return re.match(pattern, email) is not None
     
-    def validate_password_strength(self, password: str) -> tuple:
+    def validate_password_strength(self, password: str) -> tuple[bool, list[str]]:
         """Valida força da senha"""
-        errors = []
+        errors: list[str] = []
         
         if len(password) < 6:
             errors.append("Senha deve ter pelo menos 6 caracteres")
@@ -48,7 +47,7 @@ class AuthenticationManager:
         
         return len(errors) == 0, errors
     
-    def create_user(self, nome: str, email: str, password: str, perfil: str = 'usuario', criado_por: int = None) -> tuple:
+    def create_user(self, nome: str, email: str, password: str, perfil: str = 'usuario', criado_por: int | None = None) -> tuple[bool, str]:
         """Cria novo usuário"""
         try:
             cursor = self.conn.cursor()
@@ -77,20 +76,23 @@ class AuthenticationManager:
             self.conn.commit()
             
             # Log da ação
-            self.log_action(
-                criado_por or user_id, 
-                'criar', 
-                'usuarios', 
-                user_id, 
-                f"Usuario criado: {nome} ({email})"
-            )
+            log_user_id = user_id if criado_por is None else criado_por
+            if log_user_id is not None:
+                self.log_action(
+                    log_user_id,
+                    'criar',
+                    'usuarios',
+                    user_id,
+                    f"Usuario criado: {nome} ({email})"
+                )
             
             return True, f"Usuário {nome} criado com sucesso"
             
         except Exception as e:
+            print(str(e))
             return False, f"Erro ao criar usuário: {str(e)}"
     
-    def authenticate_user(self, email: str, password: str) -> tuple:
+    def authenticate_user(self, email: str, password: str) -> tuple[bool, str, dict[str, Any] | None]:
         """Autentica usuário"""
         try:
             cursor = self.conn.cursor()
@@ -124,6 +126,7 @@ class AuthenticationManager:
             return True, "Login realizado com sucesso", dict(user)
             
         except Exception as e:
+            print(str(e))
             return False, f"Erro na autenticação: {str(e)}", None
     
     def create_session(self, user_id: int) -> str:
@@ -143,10 +146,11 @@ class AuthenticationManager:
             return token
             
         except Exception as e:
+            print(str(e))
             st.error(f"Erro ao criar sessão: {e}")
             return ""
     
-    def validate_session(self, token: str) -> tuple:
+    def validate_session(self, token: str) -> tuple[bool, dict[str, Any] | None]:
         """Valida sessão ativa"""
         try:
             cursor = self.conn.cursor()
@@ -169,9 +173,10 @@ class AuthenticationManager:
             return True, dict(session)
             
         except Exception as e:
+            print(str(e))
             return False, None
     
-    def logout_user(self, token: str = None, user_id: int = None):
+    def logout_user(self, token: str | None = None, user_id: int | None = None):
         """Faz logout do usuário"""
         try:
             cursor = self.conn.cursor()
@@ -188,9 +193,10 @@ class AuthenticationManager:
                 self.log_action(user_id, 'logout', 'sistema', None, "Logout realizado")
                 
         except Exception as e:
+            print(str(e))
             st.error(f"Erro no logout: {e}")
     
-    def change_password(self, user_id: int, old_password: str, new_password: str) -> tuple:
+    def change_password(self, user_id: int, old_password: str, new_password: str) -> tuple[bool, str]:
         """Altera senha do usuário"""
         try:
             cursor = self.conn.cursor()
@@ -225,9 +231,10 @@ class AuthenticationManager:
             return True, "Senha alterada com sucesso"
             
         except Exception as e:
+            print(str(e))
             return False, f"Erro ao alterar senha: {str(e)}"
     
-    def get_users(self, active_only: bool = True) -> list:
+    def get_users(self, active_only: bool = True) -> list[dict[str, Any]]:
         """Lista usuários do sistema"""
         try:
             cursor = self.conn.cursor()
@@ -241,10 +248,11 @@ class AuthenticationManager:
             return [dict(row) for row in cursor.fetchall()]
             
         except Exception as e:
+            print(str(e))
             st.error(f"Erro ao buscar usuários: {e}")
             return []
     
-    def update_user(self, user_id: int, nome: str, email: str, perfil: str, ativo: bool, updated_by: int) -> tuple:
+    def update_user(self, user_id: int, nome: str, email: str, perfil: str, ativo: bool, updated_by: int) -> tuple[bool, str]:
         """Atualiza dados do usuário"""
         try:
             cursor = self.conn.cursor()
@@ -271,15 +279,15 @@ class AuthenticationManager:
             self.conn.commit()
             
             # Log da ação
-            new_data = {
+            new_data: dict[str, Any] = {
                 'nome': nome, 'email': email, 'perfil': perfil, 'ativo': ativo
             }
             
             self.log_action(
-                updated_by, 
-                'editar', 
-                'usuarios', 
-                user_id, 
+                updated_by,
+                'editar',
+                'usuarios',
+                user_id,
                 f"Usuario atualizado: {nome}",
                 str(old_data),
                 str(new_data)
@@ -288,9 +296,10 @@ class AuthenticationManager:
             return True, "Usuário atualizado com sucesso"
             
         except Exception as e:
+            print(str(e))
             return False, f"Erro ao atualizar usuário: {str(e)}"
     
-    def delete_user(self, user_id: int, deleted_by: int) -> tuple:
+    def delete_user(self, user_id: int, deleted_by: int) -> tuple[bool, str]:
         """Remove usuário (soft delete)"""
         try:
             cursor = self.conn.cursor()
@@ -322,9 +331,10 @@ class AuthenticationManager:
             return True, f"Usuário {user_data['nome']} removido com sucesso"
             
         except Exception as e:
+            print(str(e))
             return False, f"Erro ao remover usuário: {str(e)}"
     
-    def log_action(self, user_id: int, action: str, module: str, item_id: int = None, 
+    def log_action(self, user_id: int, action: str, module: str, item_id: int | None = None, 
                   notes: str = "", old_data: str = "", new_data: str = ""):
         """Registra ação no log de auditoria"""
         try:
@@ -344,6 +354,7 @@ class AuthenticationManager:
             self.conn.commit()
             
         except Exception as e:
+            print(str(e))
             print(f"Erro ao registrar log: {e}")
     
     def check_permission(self, user_profile: str, required_permission: str) -> bool:
@@ -357,7 +368,7 @@ class AuthenticationManager:
         user_permissions = permissions.get(user_profile, [])
         return required_permission in user_permissions
     
-    def get_user_permissions(self, user_profile: str) -> list:
+    def get_user_permissions(self, user_profile: str) -> list[str]:
         """Retorna lista de permissões do usuário"""
         permissions = {
             'admin': ['create', 'read', 'update', 'delete', 'manage_users', 'view_reports', 'manage_system'],

@@ -1,159 +1,147 @@
+
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime
 from database.connection import db
 from modules.auth import auth_manager
+from typing import Any
+# Imports dos modais
+from modules.movimentacao_modal import (
+    show_movimentacao_modal_insumo,  # type: ignore
+    show_movimentacao_modal_equipamento_eletrico,  # type: ignore
+    show_movimentacao_modal_equipamento_manual  # type: ignore
+)
 
+
+# Classe MovimentacoesManager
 class MovimentacoesManager:
     def __init__(self):
         self.db = db
-    
-    def create_movimentacao(self, data):
+
+    def create_movimentacao(self, data: dict[str, Any], usuario_id: int) -> int | None:
         """Cria uma nova movimentação"""
         try:
-            cursor = self.db.conn.cursor()
-            
+            cursor = self.db.conn.cursor()  # type: ignore
             # Verifica se há quantidade suficiente para saída
-            if data['tipo_movimentacao'] == 'Saída':
+            if data['tipo'] == 'Saída':
                 cursor.execute("""
-                    SELECT quantidade_atual FROM itens_inventario WHERE id = ?
+                    SELECT quantidade_atual FROM insumos WHERE id = ?
                 """, (data['item_id'],))
                 item = cursor.fetchone()
                 if not item or item['quantidade_atual'] < data['quantidade']:
                     st.error(f"❌ Quantidade insuficiente! Disponível: {item['quantidade_atual'] if item else 0}")
                     return None
-            
-            cursor.execute("""
-                INSERT INTO movimentacoes_estoque (
-                    item_id, tipo_movimentacao, quantidade, motivo,
-                    origem, destino, responsavel_origem, responsavel_destino,
-                    valor_unitario, observacoes, usuario_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                data['item_id'], data['tipo_movimentacao'], data['quantidade'],
-                data['motivo'], data['origem'], data['destino'],
-                data.get('responsavel_origem'), data.get('responsavel_destino'),
-                data.get('valor_unitario'), data.get('observacoes'),
-                st.session_state.get('user_id')
-            ))
-            
-            movimentacao_id = cursor.lastrowid
-            
-            # Atualiza estoque do item
-            if data['tipo_movimentacao'] == 'Entrada':
-                cursor.execute("""
-                    UPDATE itens_inventario 
-                    SET quantidade_atual = quantidade_atual + ?
-                    WHERE id = ?
-                """, (data['quantidade'], data['item_id']))
-            else:  # Saída
-                cursor.execute("""
-                    UPDATE itens_inventario 
-                    SET quantidade_atual = quantidade_atual - ?
-                    WHERE id = ?
-                """, (data['quantidade'], data['item_id']))
-            
-            self.db.conn.commit()
-            
-            # Log da ação
-            auth_manager.log_action(
-                f"Criou movimentação: {data['tipo_movimentacao']} - {data['quantidade']} unidades (ID: {movimentacao_id})",
-                "Movimentações",
-                "CREATE"
+            # Inserção da movimentação
+            cursor.execute(
+                """
+                INSERT INTO movimentacoes (
+                    item_id, tipo, tipo_item, quantidade, motivo,
+                    obra_origem_id, obra_destino_id,
+                    responsavel_origem_id, responsavel_destino_id,
+                    valor_unitario, observacoes, data_movimentacao, usuario_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    data['item_id'], data['tipo'], data['tipo_item'], data['quantidade'],
+                    data.get('motivo'),
+                    data.get('obra_origem_id'), data.get('obra_destino_id'),
+                    data.get('responsavel_origem_id'), data.get('responsavel_destino_id'),
+                    data.get('valor_unitario'), data.get('observacoes'), datetime.now(), usuario_id
+                )
             )
-            
-            return movimentacao_id
+            self.db.conn.commit()  # type: ignore
+            return cursor.lastrowid
         except Exception as e:
-            self.db.conn.rollback()
-            st.error(f"Erro ao criar movimentação: {e}")
+            st.error(f"Erro ao registrar movimentação: {e}")
             return None
-    
-    def get_movimentacoes(self, filters=None):
-        """Busca movimentações com filtros"""
+
+    def get_movimentacoes(self, filters: dict[str, Any]) -> pd.DataFrame:
+        """Busca movimentações conforme filtros"""
         try:
-            cursor = self.db.conn.cursor()
-            
+            cursor = self.db.conn.cursor()  # type: ignore
             query = """
-                SELECT 
-                    m.id, m.data_movimentacao, m.tipo_movimentacao, 
-                    m.quantidade, m.motivo, m.origem, m.destino,
-                    m.responsavel_origem, m.responsavel_destino,
-                    m.valor_unitario, m.observacoes,
-                    i.nome as item_nome, i.codigo_patrimonial,
-                    u.nome as usuario_nome
-                FROM movimentacoes_estoque m
-                LEFT JOIN itens_inventario i ON m.item_id = i.id
+                SELECT m.id, m.data_movimentacao, m.tipo, m.quantidade, m.motivo,
+                       o1.nome as obra_origem, o2.nome as obra_destino,
+                       r1.nome as responsavel_origem, r2.nome as responsavel_destino,
+                       m.valor_unitario, m.observacoes,
+                       i.descricao as item_nome, i.codigo, u.nome as usuario_nome
+                FROM movimentacoes m
+                LEFT JOIN insumos i ON m.item_id = i.id
+                LEFT JOIN obras o1 ON m.obra_origem_id = o1.id
+                LEFT JOIN obras o2 ON m.obra_destino_id = o2.id
+                LEFT JOIN responsaveis r1 ON m.responsavel_origem_id = r1.id
+                LEFT JOIN responsaveis r2 ON m.responsavel_destino_id = r2.id
                 LEFT JOIN usuarios u ON m.usuario_id = u.id
                 WHERE 1=1
             """
-            params = []
-            
-            if filters:
-                if filters.get('item_nome'):
-                    query += " AND i.nome LIKE ?"
-                    params.append(f"%{filters['item_nome']}%")
-                if filters.get('tipo_movimentacao'):
-                    query += " AND m.tipo_movimentacao = ?"
-                    params.append(filters['tipo_movimentacao'])
-                if filters.get('origem'):
-                    query += " AND m.origem LIKE ?"
-                    params.append(f"%{filters['origem']}%")
-                if filters.get('destino'):
-                    query += " AND m.destino LIKE ?"
-                    params.append(f"%{filters['destino']}%")
-                if filters.get('data_inicio'):
-                    query += " AND DATE(m.data_movimentacao) >= ?"
-                    params.append(filters['data_inicio'])
-                if filters.get('data_fim'):
-                    query += " AND DATE(m.data_movimentacao) <= ?"
-                    params.append(filters['data_fim'])
-            
+            params: list[Any] = []
+            if filters.get('item_nome'):
+                query += " AND i.descricao LIKE ?"
+                params.append(f"%{filters['item_nome']}%")
+            if filters.get('tipo'):
+                query += " AND m.tipo = ?"
+                params.append(filters['tipo'])
+            if filters.get('obra_origem'):
+                query += " AND o1.nome LIKE ?"
+                params.append(f"%{filters['obra_origem']}%")
+            if filters.get('obra_destino'):
+                query += " AND o2.nome LIKE ?"
+                params.append(f"%{filters['obra_destino']}%")
+            if filters.get('responsavel_origem'):
+                query += " AND r1.nome LIKE ?"
+                params.append(f"%{filters['responsavel_origem']}%")
+            if filters.get('responsavel_destino'):
+                query += " AND r2.nome LIKE ?"
+                params.append(f"%{filters['responsavel_destino']}%")
+            if filters.get('data_inicio'):
+                query += " AND DATE(m.data_movimentacao) >= ?"
+                params.append(filters['data_inicio'])
+            if filters.get('data_fim'):
+                query += " AND DATE(m.data_movimentacao) <= ?"
+                params.append(filters['data_fim'])
             query += " ORDER BY m.data_movimentacao DESC"
-            
-            cursor.execute(query, params)
+            cursor.execute(query, params)  # type: ignore
             results = cursor.fetchall()
-            
             columns = [
-                'id', 'data_movimentacao', 'tipo_movimentacao', 'quantidade',
-                'motivo', 'origem', 'destino', 'responsavel_origem',
+                'id', 'data_movimentacao', 'tipo', 'quantidade',
+                'motivo', 'obra_origem', 'obra_destino', 'responsavel_origem',
                 'responsavel_destino', 'valor_unitario', 'observacoes',
-                'item_nome', 'codigo_patrimonial', 'usuario_nome'
+                'item_nome', 'codigo', 'usuario_nome'
             ]
-            
             return pd.DataFrame(results, columns=columns) if results else pd.DataFrame()
-            
         except Exception as e:
             st.error(f"Erro ao buscar movimentações: {e}")
             return pd.DataFrame()
-    
-    def get_items_para_movimentacao(self):
+
+    def get_items_para_movimentacao(self) -> list[tuple[int, str, str, float, str]]:
         """Busca itens disponíveis para movimentação"""
         try:
-            cursor = self.db.conn.cursor()
+            cursor = self.db.conn.cursor()  # type: ignore
             cursor.execute("""
-                SELECT id, nome, codigo_patrimonial, quantidade_atual, unidade_medida
-                FROM itens_inventario 
-                ORDER BY nome
+                SELECT id, descricao, codigo, quantidade_atual, unidade
+                FROM insumos 
+                WHERE ativo = 1
+                ORDER BY descricao
             """)
             return cursor.fetchall()
         except:
             return []
-    
-    def get_dashboard_stats(self):
+
+    def get_dashboard_stats(self) -> dict[str, int]:
         """Estatísticas para o dashboard"""
         try:
-            cursor = self.db.conn.cursor()
-            
+            cursor = self.db.conn.cursor()  # type: ignore
+
             # Movimentações do mês atual
             cursor.execute("""
                 SELECT 
                     COUNT(*) as total,
-                    SUM(CASE WHEN tipo_movimentacao = 'Entrada' THEN 1 ELSE 0 END) as entradas,
-                    SUM(CASE WHEN tipo_movimentacao = 'Saída' THEN 1 ELSE 0 END) as saidas
-                FROM movimentacoes_estoque 
+                    SUM(CASE WHEN tipo = 'Entrada' THEN 1 ELSE 0 END) as entradas,
+                    SUM(CASE WHEN tipo = 'Saída' THEN 1 ELSE 0 END) as saidas
+                FROM movimentacoes 
                 WHERE strftime('%Y-%m', data_movimentacao) = strftime('%Y-%m', 'now')
             """)
-            
+
             result = cursor.fetchone()
             return {
                 'total_mes': result[0] or 0,
@@ -163,23 +151,23 @@ class MovimentacoesManager:
         except:
             return {'total_mes': 0, 'entradas_mes': 0, 'saidas_mes': 0}
 
+# Função principal da página
 def show_movimentacoes_page():
     """Interface principal das movimentações"""
-    
+
     st.title("📋 Sistema de Movimentações")
-    
-    if not auth_manager.check_permission("movimentacoes", "read"):
+    user_data = st.session_state.user_data
+    if not auth_manager.check_permission(user_data['perfil'], "read"):
         st.error("❌ Você não tem permissão para acessar esta página.")
         return
-    
     manager = MovimentacoesManager()
-    
+
     # Abas principais
     tab1, tab2, tab3 = st.tabs(["📋 Histórico", "➕ Nova Movimentação", "📊 Relatórios"])
-    
+
     with tab1:
         st.subheader("Histórico de Movimentações")
-        
+
         # Filtros
         with st.expander("🔍 Filtros", expanded=False):
             col1, col2, col3 = st.columns(3)
@@ -187,176 +175,158 @@ def show_movimentacoes_page():
                 filtro_item = st.text_input("Nome do Item")
                 filtro_tipo = st.selectbox("Tipo", ["Todos", "Entrada", "Saída"])
             with col2:
-                filtro_origem = st.text_input("Origem")
-                filtro_destino = st.text_input("Destino")
+                filtro_obra_origem = st.text_input("Origem")
+                filtro_obra_destino = st.text_input("Destino")
             with col3:
                 filtro_data_inicio = st.date_input("Data Início", value=None)
                 filtro_data_fim = st.date_input("Data Fim", value=None)
-        
+
         # Aplicar filtros
         filters = {}
         if filtro_item:
             filters['item_nome'] = filtro_item
         if filtro_tipo != "Todos":
-            filters['tipo_movimentacao'] = filtro_tipo
-        if filtro_origem:
-            filters['origem'] = filtro_origem
-        if filtro_destino:
-            filters['destino'] = filtro_destino
+            filters['tipo'] = filtro_tipo
+        if filtro_obra_origem:
+            filters['obra_origem'] = filtro_obra_origem
+        if filtro_obra_destino:
+            filters['obra_destino'] = filtro_obra_destino
         if filtro_data_inicio:
             filters['data_inicio'] = filtro_data_inicio.strftime('%Y-%m-%d')
         if filtro_data_fim:
             filters['data_fim'] = filtro_data_fim.strftime('%Y-%m-%d')
-        
+
         # Buscar movimentações
-        df = manager.get_movimentacoes(filters)
-        
+        df = manager.get_movimentacoes(filters)  # type: ignore
         if not df.empty:
-            st.dataframe(
-                df[['data_movimentacao', 'tipo_movimentacao', 'item_nome', 
-                   'quantidade', 'origem', 'destino', 'motivo', 'usuario_nome']],
+            st.dataframe(  # type: ignore
+                df[['data_movimentacao', 'tipo', 'item_nome',
+                   'quantidade', 'obra_origem', 'obra_destino', 'motivo', 'usuario_nome']],
                 column_config={
                     'data_movimentacao': 'Data/Hora',
-                    'tipo_movimentacao': 'Tipo',
+                    'tipo': 'Tipo',
                     'item_nome': 'Item',
                     'quantidade': 'Quantidade',
-                    'origem': 'Origem',
-                    'destino': 'Destino',
+                    'obra_origem': 'Origem',
+                    'obra_destino': 'Destino',
                     'motivo': 'Motivo',
                     'usuario_nome': 'Usuário'
                 },
-                use_container_width=True,
+                width='stretch',
                 hide_index=True
             )
         else:
             st.info("📭 Nenhuma movimentação encontrada com os filtros aplicados.")
-    
+
     with tab2:
-        if not auth_manager.check_permission("movimentacoes", "create"):
+        if not auth_manager.check_permission(user_data['perfil'], "create"):
             st.error("❌ Você não tem permissão para criar movimentações.")
             return
-        
         st.subheader("Nova Movimentação")
-        
-        with st.form("form_movimentacao"):
-            # Seleção do item
-            st.markdown("### Seleção do Item")
-            items = manager.get_items_para_movimentacao()
-            
-            if items:
-                item_options = {f"{item[1]} ({item[2]})": item[0] for item in items}
-                selected_item = st.selectbox("Item *", options=list(item_options.keys()))
-                item_id = item_options[selected_item] if selected_item else None
-                
-                # Mostrar estoque atual
-                if item_id:
-                    item_atual = next(item for item in items if item[0] == item_id)
-                    st.info(f"📦 Estoque atual: **{item_atual[3]}** {item_atual[4]}")
+        categoria_mov = st.selectbox(
+            "Movimentação de:",
+            ["Insumos", "Equipamentos Elétricos", "Equipamentos Manuais"],
+            key="categoria_movimentacao"
+        )
+
+        # Modal de movimentação rápida para cada tipo
+        if categoria_mov == "Insumos":
+            from modules.insumos import InsumosManager
+            insumos_manager = InsumosManager()
+            insumos = insumos_manager.get_insumos()
+            if insumos:
+                st.markdown("#### 📦 Insumos - Movimentação Rápida")
+                st.info("💡 Clique em 'Movimentar' para abrir o modal com campos completos (destino, responsável e quantidade)")
+                for item in insumos:
+                    col1, col2, col3, col4 = st.columns([4,2,2,2])
+                    with col1:
+                        st.write(f"**{item['descricao']}** ({item['codigo']})")
+                    with col2:
+                        st.write(f"Estoque: {item['quantidade_atual']} {item['unidade']}")
+                    with col3:
+                        st.write(f"ID: {item['id']}")
+                    with col4:
+                        if st.button(f"📦 Movimentar", key=f"movimentar_insumo_{item['id']}", help="Abrir modal de movimentação rápida"):
+                            from modules.movimentacao_modal import show_movimentacao_modal_insumo
+                            show_movimentacao_modal_insumo(item['id'])
             else:
-                st.warning("⚠️ Nenhum item disponível para movimentação.")
-                item_id = None
-            
-            # Dados da movimentação
-            st.markdown("### Dados da Movimentação")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                tipo_movimentacao = st.selectbox("Tipo de Movimentação *", ["Entrada", "Saída"])
-                quantidade = st.number_input("Quantidade *", min_value=1, value=1)
-                motivo = st.selectbox("Motivo *", [
-                    "Compra", "Doação", "Transferência", "Devolução",
-                    "Consumo", "Venda", "Perda", "Manutenção", "Empréstimo"
-                ])
-            
-            with col2:
-                origem = st.text_input("Origem *", placeholder="Ex: Fornecedor, Almoxarifado")
-                destino = st.text_input("Destino *", placeholder="Ex: Obra, Setor, Cliente")
-                valor_unitario = st.number_input("Valor Unitário (R$)", min_value=0.0, step=0.01)
-            
-            # Responsáveis
-            st.markdown("### Responsáveis")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                responsavel_origem = st.text_input("Responsável Origem")
-            
-            with col2:
-                responsavel_destino = st.text_input("Responsável Destino")
-            
-            # Observações
-            observacoes = st.text_area("Observações", placeholder="Informações adicionais sobre a movimentação")
-            
-            submitted = st.form_submit_button("💾 Registrar Movimentação", type="primary")
-            
-            if submitted:
-                if item_id and quantidade and motivo and origem and destino:
-                    data = {
-                        'item_id': item_id,
-                        'tipo_movimentacao': tipo_movimentacao,
-                        'quantidade': quantidade,
-                        'motivo': motivo,
-                        'origem': origem,
-                        'destino': destino,
-                        'responsavel_origem': responsavel_origem,
-                        'responsavel_destino': responsavel_destino,
-                        'valor_unitario': valor_unitario if valor_unitario > 0 else None,
-                        'observacoes': observacoes
-                    }
-                    
-                    movimentacao_id = manager.create_movimentacao(data)
-                    if movimentacao_id:
-                        st.success(f"✅ Movimentação registrada com sucesso! (ID: {movimentacao_id})")
-                        st.rerun()
-                else:
-                    st.error("❌ Preencha todos os campos obrigatórios marcados com *")
-    
+                st.warning("⚠️ Nenhum insumo cadastrado.")
+
+        elif categoria_mov == "Equipamentos Elétricos":
+            from modules.equipamentos_eletricos import EquipamentosEletricosManager
+            eq_manager = EquipamentosEletricosManager()
+            equipamentos = eq_manager.get_equipamentos()
+            if not equipamentos.empty:
+                st.markdown("#### ⚡ Equipamentos Elétricos - Movimentação Rápida")
+                st.info("💡 Clique em 'Movimentar' para abrir o modal com campos completos (destino e responsável)")
+                for _, row in equipamentos.iterrows():
+                    col1, col2, col3, col4, col5 = st.columns([4,2,2,2,2])
+                    with col1:
+                        st.write(f"**{row['nome']}** ({row['codigo']})")
+                    with col2:
+                        st.write(f"Localização: {row['localizacao']}")
+                    with col3:
+                        st.write(f"Status: {row['status']}")
+                    with col4:
+                        st.write(f"ID: {row['id']}")
+                    with col5:
+                        if st.button(f"⚡ Movimentar", key=f"movimentar_eletrico_{row['id']}", help="Abrir modal de movimentação rápida"):
+                            from modules.movimentacao_modal import show_movimentacao_modal_equipamento_eletrico
+                            show_movimentacao_modal_equipamento_eletrico(row['id'])
+            else:
+                st.warning("⚠️ Nenhum equipamento elétrico cadastrado.")
+
+        elif categoria_mov == "Equipamentos Manuais":
+            from modules.equipamentos_manuais import EquipamentosManuaisManager
+            eq_manager = EquipamentosManuaisManager()
+            equipamentos = eq_manager.get_equipamentos()
+            if not equipamentos.empty:
+                st.markdown("#### 🔧 Equipamentos Manuais - Movimentação Rápida")
+                st.info("💡 Clique em 'Movimentar' para abrir o modal com campos completos (destino, responsável e quantidade)")
+                for _, row in equipamentos.iterrows():
+                    col1, col2, col3, col4, col5 = st.columns([4,2,2,2,2])
+                    with col1:
+                        st.write(f"**{row['nome']}** ({row['codigo']})")
+                    with col2:
+                        st.write(f"Localização: {row['localizacao']}")
+                    with col3:
+                        st.write(f"Status: {row['status']}")
+                    with col4:
+                        st.write(f"ID: {row['id']}")
+                    with col5:
+                        if st.button(f"🔧 Movimentar", key=f"movimentar_manual_{row['id']}", help="Abrir modal de movimentação rápida"):
+                            from modules.movimentacao_modal import show_movimentacao_modal_equipamento_manual
+                            show_movimentacao_modal_equipamento_manual(row['id'])
+            else:
+                st.warning("⚠️ Nenhum equipamento manual cadastrado.")
+
+    # Relatórios (aba 3)
     with tab3:
         st.subheader("Relatórios de Movimentações")
-        
-        stats = manager.get_dashboard_stats()
-        
-        # Cards de estatísticas
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Movimentações (Mês)", stats['total_mes'])
-        
-        with col2:
-            st.metric("Entradas (Mês)", stats['entradas_mes'])
-        
-        with col3:
-            st.metric("Saídas (Mês)", stats['saidas_mes'])
-        
-        # Gráficos
-        df_stats = manager.get_movimentacoes()
-        
+        df_stats = manager.get_movimentacoes({})
         if not df_stats.empty:
             col1, col2 = st.columns(2)
-            
             with col1:
-                # Gráfico por tipo
-                tipo_counts = df_stats['tipo_movimentacao'].value_counts()
-                st.plotly_chart(
+                tipo_counts = df_stats['tipo'].value_counts()
+                st.plotly_chart(  # type: ignore
                     {
                         'data': [{
                             'type': 'pie',
                             'labels': tipo_counts.index.tolist(),
-                            'values': tipo_counts.values.tolist(),
+                            'values': tipo_counts.values.tolist(),  # type: ignore
                             'title': 'Movimentações por Tipo'
                         }],
                         'layout': {'title': 'Distribuição por Tipo'}
                     },
-                    use_container_width=True
+                    width='stretch'
                 )
-            
             with col2:
-                # Gráfico por motivo
                 motivo_counts = df_stats['motivo'].value_counts().head(10)
-                st.plotly_chart(
+                st.plotly_chart(  # type: ignore
                     {
                         'data': [{
                             'type': 'bar',
-                            'x': motivo_counts.values.tolist(),
+                            'x': motivo_counts.values.tolist(),  # type: ignore
                             'y': motivo_counts.index.tolist(),
                             'orientation': 'h'
                         }],
@@ -366,8 +336,10 @@ def show_movimentacoes_page():
                             'yaxis': {'title': 'Motivo'}
                         }
                     },
-                    use_container_width=True
+                    width='stretch'
                 )
+        else:
+            st.info("Nenhuma movimentação encontrada para relatório.")
 
 # Instância global
 movimentacoes_manager = MovimentacoesManager()

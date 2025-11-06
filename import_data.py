@@ -4,7 +4,7 @@ Importa equipamentos elétricos, manuais e insumos
 """
 
 import json
-import sqlite3
+import sqlite3  # type: ignore
 import sys
 import os
 from datetime import datetime
@@ -47,11 +47,11 @@ def import_equipamentos_eletricos():
                     obs_data = {}
                 
                 # Extrair dados das observações
-                voltagem = obs_data.get('VOLTAGEM') or obs_data.get('voltagem')
-                potencia = obs_data.get('POTENCIA') or obs_data.get('potencia')
-                data_compra = obs_data.get('DATA COMPRA') or obs_data.get('data_compra')
-                garantia = obs_data.get('GARANTIA') or obs_data.get('garantia')
-                loja = obs_data.get('LOJA') or obs_data.get('loja')
+                voltagem = obs_data.get('VOLTAGEM') or obs_data.get('voltagem')  # type: ignore
+                potencia = obs_data.get('POTENCIA') or obs_data.get('potencia')  # type: ignore
+                data_compra = obs_data.get('DATA COMPRA') or obs_data.get('data_compra')  # type: ignore
+                garantia = obs_data.get('GARANTIA') or obs_data.get('garantia')  # type: ignore
+                loja = obs_data.get('LOJA') or obs_data.get('loja')  # type: ignore
                 
                 # Converter data se necessário
                 data_compra_date = None
@@ -84,7 +84,7 @@ def import_equipamentos_eletricos():
                     loja,
                     1,  # ativo
                     1   # criado pelo admin
-                ))
+                ))  # type: ignore
                 
                 imported_count += 1
                 
@@ -131,8 +131,8 @@ def import_equipamentos_manuais():
                     obs_data = {}
                 
                 # Extrair dados das observações
-                data_compra = obs_data.get('DATA DE COMPRA') or obs_data.get('data_compra')
-                loja = obs_data.get('LOJA') or obs_data.get('loja')
+                data_compra = obs_data.get('DATA DE COMPRA') or obs_data.get('data_compra')  # type: ignore
+                loja = obs_data.get('LOJA') or obs_data.get('loja')  # type: ignore
                 
                 # Converter data se necessário
                 data_compra_date = None
@@ -165,7 +165,7 @@ def import_equipamentos_manuais():
                     observacoes_json,
                     1,  # ativo
                     1   # criado pelo admin
-                ))
+                ))  # type: ignore
                 
                 imported_count += 1
                 
@@ -228,8 +228,8 @@ def import_insumos():
                 categoria_id = categoria['id'] if categoria else None
                 
                 # Extrair dados das observações
-                marca = obs_data.get('MARCA') or obs_data.get('marca')
-                status_validade = obs_data.get('STATUS/VALIDADE') or obs_data.get('status_validade')
+                marca = obs_data.get('MARCA') or obs_data.get('marca')  # type: ignore
+                status_validade = obs_data.get('STATUS/VALIDADE') or obs_data.get('status_validade')  # type: ignore
                 
                 # Processar validade se for timestamp
                 data_validade = None
@@ -260,7 +260,7 @@ def import_insumos():
                     data_validade,
                     1,  # ativo
                     1   # criado pelo admin
-                ))
+                ))  # type: ignore
                 
                 imported_count += 1
                 

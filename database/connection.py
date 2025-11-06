@@ -7,11 +7,9 @@ Data: 2025
 import sqlite3
 import bcrypt
 import os
-from datetime import datetime
-import json
 
 class DatabaseConnection:
-    def __init__(self, db_path="database/inventario.db"):
+    def __init__(self, db_path: str = "database/inventario.db"):
         self.db_path = db_path
         self.conn = None
         self.create_database()
@@ -32,7 +30,6 @@ class DatabaseConnection:
         return self.conn
     
     def create_tables(self):
-        """Cria todas as tabelas do sistema"""
         cursor = self.get_connection().cursor()
         
         # Tabela de usuários
@@ -319,12 +316,12 @@ class DatabaseConnection:
         )
         """)
         
-        self.conn.commit()
+        if self.conn:
+            self.conn.commit()
         self.create_default_categories()
-        print("✅ Todas as tabelas foram criadas com sucesso!")
+        print("Todas as tabelas foram criadas com sucesso!")
     
     def create_default_categories(self):
-        """Cria categorias padrão baseadas nos JSONs"""
         cursor = self.get_connection().cursor()
         
         categorias_padrao = [
@@ -352,10 +349,10 @@ class DatabaseConnection:
             except Exception as e:
                 print(f"Erro ao criar categoria {nome}: {e}")
         
-        self.conn.commit()
+        if self.conn:
+            self.conn.commit()
     
     def create_default_user(self):
-        """Cria usuário administrador padrão"""
         cursor = self.get_connection().cursor()
         
         # Verifica se já existe usuário admin
@@ -372,13 +369,13 @@ class DatabaseConnection:
         VALUES (?, ?, ?, ?, ?)
         """, ('Administrador', 'admin@inventario.com', password_hash, 'admin', 1))
         
-        self.conn.commit()
+        if self.conn:
+            self.conn.commit()
         print("✅ Usuário administrador padrão criado!")
         print("   Email: admin@inventario.com")
         print("   Senha: admin123")
     
     def insert_configuracoes_padrao(self):
-        """Insere configurações padrão do sistema"""
         cursor = self.get_connection().cursor()
         
         configs_padrao = [
@@ -398,10 +395,10 @@ class DatabaseConnection:
             VALUES (?, ?, ?, ?, ?)
             """, (chave, valor, descricao, tipo, categoria))
         
-        self.conn.commit()
+        if self.conn:
+            self.conn.commit()
     
     def close_connection(self):
-        """Fecha a conexão com o banco"""
         if self.conn:
             self.conn.close()
             self.conn = None

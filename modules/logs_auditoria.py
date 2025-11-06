@@ -1,21 +1,22 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta  # type: ignore # noqa: F401
 from database.connection import db
 from modules.auth import auth_manager
+from typing import Any
 
 class LogsAuditoriaManager:
     def __init__(self):
         self.db = db
     
-    def get_logs(self, filters=None):
+    def get_logs(self, filters: dict = None) -> pd.DataFrame:  # type: ignore
         """Busca logs de auditoria com filtros"""
         try:
-            cursor = self.db.conn.cursor()
+            cursor = self.db.conn.cursor()  # type: ignore
             
             query = """
                 SELECT 
-                    l.id, l.data_acao, l.acao, l.modulo, l.tipo_acao,
+                    l.id, l.data_acao, l.acao, l.modulo, l.acao,
                     l.detalhes, u.nome as usuario_nome, u.email as usuario_email
                 FROM logs_auditoria l
                 LEFT JOIN usuarios u ON l.usuario_id = u.id
@@ -24,29 +25,29 @@ class LogsAuditoriaManager:
             params = []
             
             if filters:
-                if filters.get('usuario'):
+                if filters.get('usuario'):  # type: ignore
                     query += " AND u.nome LIKE ?"
-                    params.append(f"%{filters['usuario']}%")
-                if filters.get('modulo'):
+                    params.append(f"%{filters['usuario']}%")  # type: ignore
+                if filters.get('modulo'):  # type: ignore
                     query += " AND l.modulo = ?"
-                    params.append(filters['modulo'])
-                if filters.get('tipo_acao'):
-                    query += " AND l.tipo_acao = ?"
-                    params.append(filters['tipo_acao'])
-                if filters.get('data_inicio'):
+                    params.append(filters['modulo'])  # type: ignore
+                if filters.get('acao'):  # type: ignore
+                    query += " AND l.acao = ?"
+                    params.append(filters['acao'])  # type: ignore
+                if filters.get('data_inicio'):  # type: ignore
                     query += " AND DATE(l.data_acao) >= ?"
-                    params.append(filters['data_inicio'])
-                if filters.get('data_fim'):
+                    params.append(filters['data_inicio'])  # type: ignore
+                if filters.get('data_fim'):  # type: ignore
                     query += " AND DATE(l.data_acao) <= ?"
-                    params.append(filters['data_fim'])
+                    params.append(filters['data_fim'])  # type: ignore
             
             query += " ORDER BY l.data_acao DESC LIMIT 1000"
             
-            cursor.execute(query, params)
+            cursor.execute(query, params)  # type: ignore
             results = cursor.fetchall()
             
             columns = [
-                'id', 'data_acao', 'acao', 'modulo', 'tipo_acao',
+                'id', 'data_acao', 'acao', 'modulo', 'acao',
                 'detalhes', 'usuario_nome', 'usuario_email'
             ]
             
@@ -56,23 +57,23 @@ class LogsAuditoriaManager:
             st.error(f"Erro ao buscar logs: {e}")
             return pd.DataFrame()
     
-    def get_modulos_disponiveis(self):
+    def get_modulos_disponiveis(self) -> list[str]:
         """Busca módulos disponíveis nos logs"""
         try:
-            cursor = self.db.conn.cursor()
+            cursor = self.db.conn.cursor()  # type: ignore
             cursor.execute("SELECT DISTINCT modulo FROM logs_auditoria ORDER BY modulo")
             return [row[0] for row in cursor.fetchall()]
         except:
             return []
     
-    def get_tipos_acao(self):
+    def get_tipos_acao(self) -> list[str]:
         """Retorna tipos de ação disponíveis"""
         return ['CREATE', 'READ', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT']
     
-    def get_dashboard_stats(self):
+    def get_dashboard_stats(self) -> dict[str, Any]:
         """Estatísticas para o dashboard"""
         try:
-            cursor = self.db.conn.cursor()
+            cursor = self.db.conn.cursor()  # type: ignore
             
             # Logs das últimas 24h
             cursor.execute("""
@@ -122,11 +123,10 @@ def show_logs_auditoria_page():
     """Interface principal dos logs de auditoria"""
     
     st.title("📋 Logs de Auditoria")
-    
-    if not auth_manager.check_permission("logs", "read"):
+    user_data = st.session_state.user_data
+    if not auth_manager.check_permission(user_data['perfil'], "read"):
         st.error("❌ Você não tem permissão para acessar esta página.")
         return
-    
     manager = LogsAuditoriaManager()
     
     # Abas principais
@@ -170,13 +170,13 @@ def show_logs_auditoria_page():
             filters['data_fim'] = filtro_data_fim.strftime('%Y-%m-%d')
         
         # Buscar logs
-        df = manager.get_logs(filters)
+    df = manager.get_logs(filters)  # type: ignore
         
-        if not df.empty:
+    if not df.empty:
             # Formatação de data
-            df['data_formatada'] = pd.to_datetime(df['data_acao']).dt.strftime('%d/%m/%Y %H:%M:%S')
+            df['data_formatada'] = pd.to_datetime(df['data_acao']).dt.strftime('%d/%m/%Y %H:%M:%S')  # type: ignore
             
-            st.dataframe(
+            st.dataframe(  # type: ignore
                 df[['data_formatada', 'usuario_nome', 'modulo', 'tipo_acao', 'acao']],
                 column_config={
                     'data_formatada': 'Data/Hora',
@@ -185,7 +185,7 @@ def show_logs_auditoria_page():
                     'tipo_acao': 'Tipo',
                     'acao': 'Ação'
                 },
-                use_container_width=True,
+                width='stretch',
                 hide_index=True
             )
             
@@ -197,11 +197,11 @@ def show_logs_auditoria_page():
                 format_func=lambda x: f"{df.iloc[x]['data_formatada']} - {df.iloc[x]['usuario_nome']} - {df.iloc[x]['acao']}"
             )
             
-            if selected_log is not None:
+            if selected_log is not None:  # type: ignore
                 log_details = df.iloc[selected_log]
                 st.info(f"**Detalhes:** {log_details['detalhes'] or 'Nenhum detalhe adicional'}")
-        else:
-            st.info("📭 Nenhum log encontrado com os filtros aplicados.")
+    else:
+        st.info("📭 Nenhum log encontrado com os filtros aplicados.")
     
     with tab2:
         st.subheader("Estatísticas dos Logs")
@@ -224,19 +224,19 @@ def show_logs_auditoria_page():
             st.metric("Usuário Mais Ativo", stats['usuario_ativo'])
         
         # Gráficos
-        df_stats = manager.get_logs()
+    df_stats = manager.get_logs()  # type: ignore
         
-        if not df_stats.empty:
+    if not df_stats.empty:
             col1, col2 = st.columns(2)
             
             with col1:
                 # Gráfico por módulo
                 modulo_counts = df_stats['modulo'].value_counts().head(10)
-                st.plotly_chart(
+                st.plotly_chart(  # type: ignore
                     {
                         'data': [{
                             'type': 'bar',
-                            'x': modulo_counts.values.tolist(),
+                            'x': modulo_counts.values.tolist(),  # type: ignore
                             'y': modulo_counts.index.tolist(),
                             'orientation': 'h'
                         }],
@@ -246,60 +246,60 @@ def show_logs_auditoria_page():
                             'yaxis': {'title': 'Módulo'}
                         }
                     },
-                    use_container_width=True
+                    width='stretch'
                 )
             
             with col2:
                 # Gráfico por tipo de ação
                 tipo_counts = df_stats['tipo_acao'].value_counts()
-                st.plotly_chart(
+                st.plotly_chart(  # type: ignore
                     {
                         'data': [{
                             'type': 'pie',
                             'labels': tipo_counts.index.tolist(),
-                            'values': tipo_counts.values.tolist()
+                            'values': tipo_counts.values.tolist()  # type: ignore
                         }],
                         'layout': {'title': 'Distribuição por Tipo de Ação'}
                     },
-                    use_container_width=True
+                    width='stretch'
                 )
     
     with tab3:
         st.subheader("Análise de Atividade")
         
-        df_analysis = manager.get_logs({
+    df_analysis = manager.get_logs({  # type: ignore
             'data_inicio': (date.today() - timedelta(days=30)).strftime('%Y-%m-%d'),
             'data_fim': date.today().strftime('%Y-%m-%d')
         })
         
-        if not df_analysis.empty:
+    if not df_analysis.empty:
             # Atividade por usuário
             st.markdown("### 👤 Atividade por Usuário (Últimos 30 dias)")
-            user_activity = df_analysis.groupby('usuario_nome').agg({
+            user_activity = df_analysis.groupby('usuario_nome').agg({  # type: ignore
                 'id': 'count',
-                'tipo_acao': lambda x: x.value_counts().to_dict()
+                'tipo_acao': lambda x: x.value_counts().to_dict()  # type: ignore
             }).rename(columns={'id': 'total_acoes'})
             
-            st.dataframe(
-                user_activity.sort_values('total_acoes', ascending=False),
+            st.dataframe(  # type: ignore
+                user_activity.sort_values('total_acoes', ascending=False),  # type: ignore
                 column_config={
                     'total_acoes': 'Total de Ações',
                     'tipo_acao': 'Tipos de Ação'
                 },
-                use_container_width=True
+                width='stretch'
             )
             
             # Atividade por horário
             st.markdown("### 🕐 Atividade por Horário")
-            df_analysis['hora'] = pd.to_datetime(df_analysis['data_acao']).dt.hour
-            hourly_activity = df_analysis.groupby('hora').size()
+            df_analysis['hora'] = pd.to_datetime(df_analysis['data_acao']).dt.hour  # type: ignore
+            hourly_activity = df_analysis.groupby('hora').size()  # type: ignore
             
-            st.plotly_chart(
+            st.plotly_chart(  # type: ignore
                 {
                     'data': [{
                         'type': 'bar',
                         'x': hourly_activity.index.tolist(),
-                        'y': hourly_activity.values.tolist()
+                        'y': hourly_activity.values.tolist()  # type: ignore
                     }],
                     'layout': {
                         'title': 'Atividade por Horário do Dia',
@@ -307,10 +307,10 @@ def show_logs_auditoria_page():
                         'yaxis': {'title': 'Número de Ações'}
                     }
                 },
-                use_container_width=True
+                width='stretch'
             )
-        else:
-            st.info("📊 Dados insuficientes para análise.")
+    else:
+        st.info("📊 Dados insuficientes para análise.")
 
 # Instância global
 logs_auditoria_manager = LogsAuditoriaManager()
