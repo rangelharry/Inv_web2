@@ -115,6 +115,9 @@ class AuthenticationManager:
             user_id, nome, email, password_hash, perfil, ativo = user
             if not ativo:
                 return False, "Usuário inativo", None
+            # Se o hash vier como bytes, converte para string
+            if isinstance(password_hash, bytes):
+                password_hash = password_hash.decode('utf-8')
             if self.verify_password(password, password_hash):
                 # Atualiza último login
                 cursor.execute("""
