@@ -74,18 +74,18 @@ class AuthenticationManager:
             # Cria usuário
             password_hash = self.hash_password(password)
             cursor.execute("""
-            INSERT INTO usuarios (nome, email, password_hash, perfil, ativo, criado_por)
-            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
-            """, (nome, email, password_hash, perfil, True, criado_por))
+            INSERT INTO usuarios (nome, email, password_hash, perfil, ativo)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+            """, (nome, email, password_hash, perfil, True))
             
             result = cursor.fetchone()
             user_id = result[0] if result else None
             conn.commit()
             
             # Log da ação
-            if user_id and criado_por:
+            if user_id:
                 self.log_action(
-                    criado_por,
+                    user_id,
                     'criar',
                     'usuarios',
                     user_id,
@@ -115,9 +115,12 @@ class AuthenticationManager:
             user_id, nome, email, password_hash, perfil, ativo = user
             if not ativo:
                 return False, "Usuário inativo", None
-            # Se o hash vier como bytes, converte para string
+            print(f"[DEBUG] Hash lido do banco: {repr(password_hash)} | Tipo: {type(password_hash)} | Tamanho: {len(password_hash) if password_hash else 0}")
+            # Se o hash vier como bytes, converte para string e limpa espaços/quebras
             if isinstance(password_hash, bytes):
                 password_hash = password_hash.decode('utf-8')
+            password_hash = str(password_hash).strip()
+            print(f"[DEBUG] Hash após tratamento: {repr(password_hash)} | Tamanho: {len(password_hash)}")
             if self.verify_password(password, password_hash):
                 # Atualiza último login
                 cursor.execute("""
@@ -136,41 +139,7 @@ class AuthenticationManager:
                 }
             return False, "Senha incorreta", None
         except Exception as e:
-            # Se a conexão estiver fechada, tenta novamente uma vez
-            if 'closed' in str(e).lower() or 'connection already closed' in str(e).lower():
-                try:
-                    conn = self.get_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        SELECT id, nome, email, password_hash, perfil, ativo
-                        FROM usuarios 
-                        WHERE email = %s
-                    """, (email,))
-                    user = cursor.fetchone()
-                    if not user:
-                        return False, "Usuário não encontrado", None
-                    user_id, nome, email, password_hash, perfil, ativo = user
-                    if not ativo:
-                        return False, "Usuário inativo", None
-                    if self.verify_password(password, password_hash):
-                        cursor.execute("""
-                            UPDATE usuarios 
-                            SET ultimo_login = %s 
-                            WHERE id = %s
-                        """, (datetime.now(), user_id))
-                        conn.commit()
-                        self.log_action(user_id, 'login', 'usuarios', user_id, 'Login realizado')
-                        return True, "Login realizado com sucesso", {
-                            'id': user_id,
-                            'nome': nome,
-                            'email': email,
-                            'perfil': perfil
-                        }
-                    return False, "Senha incorreta", None
-                except Exception as e2:
-                    print(f"Erro na autenticação (retry): {e2}")
-                    return False, f"Erro na autenticação: {e2}", None
-            print(f"Erro na autenticação: {e}")
+            print(f"[DEBUG] Exceção na autenticação: {e}")
             return False, f"Erro na autenticação: {e}", None
     
     def change_password(self, user_id: int, old_password: str, new_password: str) -> Tuple[bool, str]:

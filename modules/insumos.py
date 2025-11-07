@@ -21,10 +21,10 @@ class InsumosManager:
             cursor = self.conn.cursor()
             cursor.execute("""
             SELECT id, nome FROM categorias 
-            WHERE tipo = ? AND ativo = 1 
+            WHERE tipo = %s AND ativo = 1 
             ORDER BY nome
             """, (tipo,))
-            return [dict(row) for row in cursor.fetchall()]
+            return [dict(zip([desc[0] for desc in cursor.description], row)) for row in cursor.fetchall()]
         except Exception as e:
             st.error(f"Erro ao buscar categorias: {e}")
             return []
@@ -33,36 +33,31 @@ class InsumosManager:
         """Cria novo insumo"""
         try:
             cursor = self.conn.cursor()
-            
             # Verifica se código já existe
-            cursor.execute("SELECT id FROM insumos WHERE codigo = ?", (dados['codigo'],))
+            cursor.execute("SELECT id FROM insumos WHERE codigo = %s", (dados['codigo'],))
             if cursor.fetchone():
                 return False, "Código já existe"
-            
             cursor.execute("""
             INSERT INTO insumos (
                 codigo, descricao, categoria_id, unidade, quantidade_atual,
                 quantidade_minima, fornecedor, marca, 
                 localizacao, observacoes, data_validade, criado_por
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 dados['codigo'], dados['descricao'], dados['categoria_id'],
                 dados['unidade'], dados['quantidade_atual'], dados['quantidade_minima'],
                 dados['fornecedor'], dados['marca'],
                 dados['localizacao'], dados['observacoes'], dados['data_validade'], user_id
             ))
-            
-            insumo_id = cursor.lastrowid
+            cursor.execute("SELECT id FROM insumos WHERE codigo = %s", (dados['codigo'],))
+            insumo_id = cursor.fetchone()[0]
             self.conn.commit()
-            
             # Log da ação
             auth_manager.log_action(
                 user_id, 'criar', 'insumos', insumo_id,
                 f"Insumo criado: {dados['codigo']} - {dados['descricao']}"
             )
-            
             return True, "Insumo criado com sucesso"
-            
         except Exception as e:
             return False, f"Erro ao criar insumo: {str(e)}"
     
@@ -70,41 +65,34 @@ class InsumosManager:
         """Atualiza insumo existente"""
         try:
             cursor = self.conn.cursor()
-            
             # Busca dados atuais
-            cursor.execute("SELECT * FROM insumos WHERE id = ?", (insumo_id,))
-            old_data = dict(cursor.fetchone())
-            
+            cursor.execute("SELECT * FROM insumos WHERE id = %s", (insumo_id,))
+            old_data = dict(zip([desc[0] for desc in cursor.description], cursor.fetchone()))
             # Verifica se código já existe em outro insumo
-            cursor.execute("SELECT id FROM insumos WHERE codigo = ? AND id != ?", (dados['codigo'], insumo_id))
+            cursor.execute("SELECT id FROM insumos WHERE codigo = %s AND id != %s", (dados['codigo'], insumo_id))
             if cursor.fetchone():
                 return False, "Código já existe em outro insumo"
-            
             cursor.execute("""
             UPDATE insumos SET 
-                codigo = ?, descricao = ?, categoria_id = ?, unidade = ?,
-                quantidade_atual = ?, quantidade_minima = ?,
-                fornecedor = ?, marca = ?, localizacao = ?, observacoes = ?,
-                data_validade = ?
-            WHERE id = ?
+                codigo = %s, descricao = %s, categoria_id = %s, unidade = %s,
+                quantidade_atual = %s, quantidade_minima = %s,
+                fornecedor = %s, marca = %s, localizacao = %s, observacoes = %s,
+                data_validade = %s
+            WHERE id = %s
             """, (
                 dados['codigo'], dados['descricao'], dados['categoria_id'],
                 dados['unidade'], dados['quantidade_atual'], dados['quantidade_minima'],
                 dados['fornecedor'], dados['marca'],
                 dados['localizacao'], dados['observacoes'], dados['data_validade'], insumo_id
             ))
-            
             self.conn.commit()
-            
             # Log da ação
             auth_manager.log_action(
                 user_id, 'editar', 'insumos', insumo_id,
                 f"Insumo atualizado: {dados['codigo']} - {dados['descricao']}",
                 str(old_data), str(dados)
             )
-            
             return True, "Insumo atualizado com sucesso"
-            
         except Exception as e:
             return False, f"Erro ao atualizar insumo: {str(e)}"
     
@@ -112,25 +100,20 @@ class InsumosManager:
         """Remove insumo (soft delete)"""
         try:
             cursor = self.conn.cursor()
-            
             # Busca dados do insumo
-            cursor.execute("SELECT * FROM insumos WHERE id = ?", (insumo_id,))
-            insumo_data = cursor.fetchone()
-            
-            if not insumo_data:
+            cursor.execute("SELECT * FROM insumos WHERE id = %s", (insumo_id,))
+            row = cursor.fetchone()
+            if not row:
                 return False, "Insumo não encontrado"
-            
-            cursor.execute("UPDATE insumos SET ativo = 0 WHERE id = ?", (insumo_id,))
+            insumo_data = dict(zip([desc[0] for desc in cursor.description], row))
+            cursor.execute("UPDATE insumos SET ativo = 0 WHERE id = %s", (insumo_id,))
             self.conn.commit()
-            
             # Log da ação
             auth_manager.log_action(
                 user_id, 'excluir', 'insumos', insumo_id,
                 f"Insumo removido: {insumo_data['codigo']} - {insumo_data['descricao']}"
             )
-            
             return True, f"Insumo {insumo_data['codigo']} removido com sucesso"
-            
         except Exception as e:
             return False, f"Erro ao remover insumo: {str(e)}"
     
@@ -138,7 +121,6 @@ class InsumosManager:
         """Busca insumos com filtros"""
         try:
             cursor = self.conn.cursor()
-            
             query = """
             SELECT i.*, c.nome as categoria_nome
             FROM insumos i
@@ -146,25 +128,19 @@ class InsumosManager:
             WHERE i.ativo = 1
             """
             params: list[Any] = []
-            
             if filtros:
                 if filtros.get('categoria_id'):
-                    query += " AND i.categoria_id = ?"
+                    query += " AND i.categoria_id = %s"
                     params.append(filtros['categoria_id'])
-                
                 if filtros.get('estoque_baixo'):
                     query += " AND i.quantidade_atual <= i.quantidade_minima"
-                
                 if filtros.get('busca'):
-                    query += " AND (i.codigo LIKE ? OR i.descricao LIKE ? OR i.marca LIKE ?)"
+                    query += " AND (i.codigo LIKE %s OR i.descricao LIKE %s OR i.marca LIKE %s)"
                     busca = f"%{filtros['busca']}%"
                     params.extend([busca, busca, busca])  # type: ignore
-            
             query += " ORDER BY i.codigo"
-            
             cursor.execute(query, params)  # type: ignore
-            return [dict(row) for row in cursor.fetchall()]
-            
+            return [dict(zip([desc[0] for desc in cursor.description], row)) for row in cursor.fetchall()]
         except Exception as e:
             st.error(f"Erro ao buscar insumos: {e}")
             return []
@@ -177,12 +153,10 @@ class InsumosManager:
             SELECT i.*, c.nome as categoria_nome
             FROM insumos i
             LEFT JOIN categorias c ON i.categoria_id = c.id
-            WHERE i.id = ?
+            WHERE i.id = %s
             """, (insumo_id,))
-            
             result = cursor.fetchone()
-            return dict(result) if result else None
-            
+            return dict(zip([desc[0] for desc in cursor.description], result)) if result else None
         except Exception as e:
             st.error(f"Erro ao buscar insumo: {e}")
             return None
@@ -191,53 +165,44 @@ class InsumosManager:
         """Ajusta estoque de insumo"""
         try:
             cursor = self.conn.cursor()
-            
             # Busca insumo atual
-            cursor.execute("SELECT * FROM insumos WHERE id = ?", (insumo_id,))
-            insumo = cursor.fetchone()
-            
-            if not insumo:
+            cursor.execute("SELECT * FROM insumos WHERE id = %s", (insumo_id,))
+            row = cursor.fetchone()
+            if not row:
                 return False, "Insumo não encontrado"
-            
+            insumo = dict(zip([desc[0] for desc in cursor.description], row))
             quantidade_atual = insumo['quantidade_atual']
-            
             if tipo_movimento == 'entrada':
                 nova_quantidade = quantidade_atual + quantidade
             else:  # saida
                 if quantidade_atual < quantidade:
                     return False, "Quantidade insuficiente em estoque"
                 nova_quantidade = quantidade_atual - quantidade
-            
             # Atualiza estoque
             cursor.execute("""
             UPDATE insumos SET 
-                quantidade_atual = ?,
-                data_ultima_entrada = CASE WHEN ? = 'entrada' THEN CURRENT_TIMESTAMP ELSE data_ultima_entrada END,
-                data_ultima_saida = CASE WHEN ? = 'saida' THEN CURRENT_TIMESTAMP ELSE data_ultima_saida END
-            WHERE id = ?
+                quantidade_atual = %s,
+                data_ultima_entrada = CASE WHEN %s = 'entrada' THEN CURRENT_TIMESTAMP ELSE data_ultima_entrada END,
+                data_ultima_saida = CASE WHEN %s = 'saida' THEN CURRENT_TIMESTAMP ELSE data_ultima_saida END
+            WHERE id = %s
             """, (nova_quantidade, tipo_movimento, tipo_movimento, insumo_id))
-            
             # Registra movimentação
             cursor.execute("""
             INSERT INTO movimentacoes (
                 tipo, tipo_item, item_id, codigo_item, descricao_item,
                 quantidade, unidade, motivo, observacoes, usuario_id
-            ) VALUES (?, 'insumo', ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, 'insumo', %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 tipo_movimento, insumo_id, insumo['codigo'], insumo['descricao'],
                 quantidade, insumo['unidade'], motivo, f"Ajuste de estoque: {motivo}", user_id
             ))
-            
             self.conn.commit()
-            
             # Log da ação
             auth_manager.log_action(
                 user_id, 'editar', 'insumos', insumo_id,
                 f"Ajuste de estoque - {tipo_movimento}: {quantidade} {insumo['unidade']} - {motivo}"
             )
-            
             return True, f"Estoque ajustado: {nova_quantidade} {insumo['unidade']}"
-            
         except Exception as e:
             return False, f"Erro ao ajustar estoque: {str(e)}"
 
