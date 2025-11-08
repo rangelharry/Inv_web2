@@ -59,7 +59,7 @@ class ConfiguracoesManager:
         """Busca uma configuração específica"""
         try:
             cursor = self.db.get_connection().cursor()
-            cursor.execute("SELECT valor FROM configuracoes WHERE chave = ?", (chave,))
+            cursor.execute("SELECT valor FROM configuracoes WHERE chave = %s", (chave,))
             result = cursor.fetchone()
             return result[0] if result else None
         except Exception as e:
@@ -72,8 +72,8 @@ class ConfiguracoesManager:
             cursor = self.db.get_connection().cursor()
             cursor.execute("""
                 UPDATE configuracoes 
-                SET valor = ?, data_atualizacao = CURRENT_TIMESTAMP, atualizado_por = ?
-                WHERE chave = ?
+                SET valor = %s, data_atualizacao = CURRENT_TIMESTAMP, atualizado_por = %s
+                WHERE chave = %s
             """, (valor, usuario_id, chave))
             
             self.db.get_connection().commit()
@@ -98,7 +98,7 @@ class ConfiguracoesManager:
                 cursor.execute("""
                     SELECT chave, valor, descricao, tipo, categoria, data_atualizacao
                     FROM configuracoes 
-                    WHERE categoria = ?
+                    WHERE categoria = %s
                     ORDER BY chave
                 """, (categoria,))
             else:
@@ -111,7 +111,8 @@ class ConfiguracoesManager:
             rows = cursor.fetchall()
             
             if rows:
-                return pd.DataFrame([dict(row) for row in rows])
+                columns = [desc[0] for desc in cursor.description]
+                return pd.DataFrame([dict(zip(columns, row)) for row in rows])
             else:
                 return pd.DataFrame()
                 

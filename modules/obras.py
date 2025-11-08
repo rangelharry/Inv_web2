@@ -21,7 +21,7 @@ class ObrasManager:
                     codigo, nome, endereco, cidade, estado, cep, status,
                     responsavel, telefone, email, observacoes,
                     data_inicio, data_previsao, valor_orcado, valor_gasto, criado_por
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 data['codigo'], data['nome'], data.get('endereco', ''),
                 data.get('cidade', ''), data.get('estado', ''), data.get('cep', ''),
@@ -32,7 +32,10 @@ class ObrasManager:
                 data.get('criado_por')
             ))
 
-            obra_id = cursor.lastrowid
+            # Recuperar o id da obra criada
+            cursor.execute("SELECT currval(pg_get_serial_sequence('obras','id'))")
+            result = cursor.fetchone()
+            obra_id = result['id'] if result else None
             self.db.conn.commit()  # type: ignore
 
             # Log da ação
@@ -67,13 +70,13 @@ class ObrasManager:
 
             if filters:
                 if filters.get('nome'):
-                    query += " AND nome LIKE ?"
+                    query += " AND nome LIKE %s"
                     params.append(f"%{filters['nome']}%")  # type: ignore
                 if filters.get('status'):
-                    query += " AND status = ?"
+                    query += " AND status = %s"
                     params.append(filters['status'])  # type: ignore
                 if filters.get('responsavel'):
-                    query += " AND responsavel LIKE ?"
+                    query += " AND responsavel LIKE %s"
                     params.append(f"%{filters['responsavel']}%")  # type: ignore
 
             query += " ORDER BY nome"
@@ -101,10 +104,10 @@ class ObrasManager:
 
             cursor.execute("""
                 UPDATE obras SET
-                    codigo = ?, nome = ?, endereco = ?, cidade = ?, estado = ?, cep = ?,
-                    status = ?, responsavel = ?, telefone = ?, email = ?, observacoes = ?,
-                    data_inicio = ?, data_previsao = ?, valor_orcado = ?, valor_gasto = ?
-                WHERE id = ?
+                    codigo = %s, nome = %s, endereco = %s, cidade = %s, estado = %s, cep = %s,
+                    status = %s, responsavel = %s, telefone = %s, email = %s, observacoes = %s,
+                    data_inicio = %s, data_previsao = %s, valor_orcado = %s, valor_gasto = %s
+                WHERE id = %s
             """, (
                 data['codigo'], data['nome'], data.get('endereco', ''),
                 data.get('cidade', ''), data.get('estado', ''), data.get('cep', ''),
@@ -134,7 +137,7 @@ class ObrasManager:
         try:
             cursor = self.db.conn.cursor()  # type: ignore
 
-            cursor.execute("DELETE FROM obras WHERE id = ?", (obra_id,))
+            cursor.execute("DELETE FROM obras WHERE id = %s", (obra_id,))
             self.db.conn.commit()  # type: ignore
 
             auth_manager.log_action(
@@ -171,7 +174,7 @@ class ObrasManager:
             """)
             result = cursor.fetchone()
             return {
-                'total': result[0] or 0,
+                'total': result['count'] if result else 0,
                 'ativas': result[1] or 0,
                 'em_andamento': result[2] or 0,
                 'concluidas': result[3] or 0,

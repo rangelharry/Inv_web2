@@ -21,7 +21,7 @@ class InsumosManager:
             cursor = self.conn.cursor()
             cursor.execute("""
             SELECT id, nome FROM categorias 
-            WHERE tipo = %s AND ativo = 1 
+            WHERE tipo = %s AND ativo = TRUE 
             ORDER BY nome
             """, (tipo,))
             return [dict(zip([desc[0] for desc in cursor.description], row)) for row in cursor.fetchall()]
@@ -50,7 +50,8 @@ class InsumosManager:
                 dados['localizacao'], dados['observacoes'], dados['data_validade'], user_id
             ))
             cursor.execute("SELECT id FROM insumos WHERE codigo = %s", (dados['codigo'],))
-            insumo_id = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            insumo_id = result['id'] if result else None
             self.conn.commit()
             # Log da ação
             auth_manager.log_action(
@@ -106,7 +107,7 @@ class InsumosManager:
             if not row:
                 return False, "Insumo não encontrado"
             insumo_data = dict(zip([desc[0] for desc in cursor.description], row))
-            cursor.execute("UPDATE insumos SET ativo = 0 WHERE id = %s", (insumo_id,))
+            cursor.execute("UPDATE insumos SET ativo = FALSE WHERE id = %s", (insumo_id,))
             self.conn.commit()
             # Log da ação
             auth_manager.log_action(
@@ -120,12 +121,16 @@ class InsumosManager:
     def get_insumos(self, filtros: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Busca insumos com filtros"""
         try:
+            # Garantir que a conexão esteja limpa
+            if hasattr(self.conn, 'rollback'):
+                self.conn.rollback()  # type: ignore
+            
             cursor = self.conn.cursor()
             query = """
             SELECT i.*, c.nome as categoria_nome
             FROM insumos i
             LEFT JOIN categorias c ON i.categoria_id = c.id
-            WHERE i.ativo = 1
+            WHERE i.ativo = TRUE
             """
             params: list[Any] = []
             if filtros:
@@ -142,6 +147,9 @@ class InsumosManager:
             cursor.execute(query, params)  # type: ignore
             return [dict(zip([desc[0] for desc in cursor.description], row)) for row in cursor.fetchall()]
         except Exception as e:
+            # Fazer rollback explícito para limpar o estado da transação
+            if hasattr(self.conn, 'rollback'):
+                self.conn.rollback()  # type: ignore
             st.error(f"Erro ao buscar insumos: {e}")
             return []
     
@@ -341,7 +349,7 @@ def show_insumos_page():
             st.write("---")
             
             # Exibir tabela com informações e botões de edição
-            for _, row in df_exibicao.iterrows():
+            for idx, row in df_exibicao.iterrows():
                 with st.container():
                     col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([0.8, 1.5, 2, 1.2, 1, 1, 0.8, 0.8, 0.8])
                     
@@ -364,12 +372,12 @@ def show_insumos_page():
                         st.write(row['Status'])
                     
                     with col7:
-                        if st.button("✏️", key=f"edit_{row['id']}", help="Editar insumo"):
+                        if st.button("✏️", key=f"edit_{row['id']}_{idx}", help="Editar insumo"):
                             st.session_state[f'edit_mode_{row["id"]}'] = True
                             st.rerun()
                     
                     with col8:
-                        if st.button("📦", key=f"move_{row['id']}", help="Movimentar insumo"):
+                        if st.button("📦", key=f"move_{row['id']}_{idx}", help="Movimentar insumo"):
                             # Fecha todos os outros modais de movimentação
                             for k in list(st.session_state.keys()):
                                 if isinstance(k, str) and k.startswith("move_mode_") and k != f"move_mode_{row['id']}":
@@ -378,7 +386,7 @@ def show_insumos_page():
                             st.rerun()
                     
                     with col9:
-                        if st.button("❌", key=f"del_{row['id']}", help="Excluir insumo"):
+                        if st.button("❌", key=f"del_{row['id']}_{idx}", help="Excluir insumo"):
                             st.session_state[f'confirm_delete_insumo_{row["id"]}'] = True
                             st.rerun()
                 
@@ -427,7 +435,7 @@ def show_insumos_page():
                             categoria_index = 0
                         
                         # Primeira linha - Descrição completa
-                        nova_descricao = st.text_input("Descrição:", value=row['descricao'], key=f"desc_{row['id']}")
+                        nova_descricao = st.text_input("Descrição:", value=row['descricao'], key=f"desc_{row['id']}_{idx}")
                         
                         # Segunda linha - Categoria e informações
                         col_info1, col_info2 = st.columns(2)
@@ -436,7 +444,7 @@ def show_insumos_page():
                                 "Categoria:", 
                                 options=categoria_nomes,
                                 index=categoria_index,
-                                key=f"cat_{row['id']}"
+                                key=f"cat_{row['id']}_{idx}"
                             )
                         with col_info2:
                             st.write(f"**Código:** {row['codigo']}")
@@ -445,15 +453,15 @@ def show_insumos_page():
                         # Terceira linha - Quantidades
                         col_qtd1, col_qtd2 = st.columns(2)
                         with col_qtd1:
-                            nova_qtd_atual = st.number_input("Quantidade Atual:", min_value=0, value=int(row['quantidade_atual']), key=f"atual_{row['id']}")
+                            nova_qtd_atual = st.number_input("Quantidade Atual:", min_value=0, value=int(row['quantidade_atual']), key=f"atual_{row['id']}_{idx}")
                         
                         with col_qtd2:
-                            nova_qtd_min = st.number_input("Quantidade Mínima:", min_value=0, value=int(row['quantidade_minima']), key=f"min_{row['id']}")
+                            nova_qtd_min = st.number_input("Quantidade Mínima:", min_value=0, value=int(row['quantidade_minima']), key=f"min_{row['id']}_{idx}")
                         
                         col_btn1, col_btn2 = st.columns(2)
                         
                         with col_btn1:
-                            if st.button("💾 Salvar", key=f"save_{row['id']}", type="primary"):
+                            if st.button("💾 Salvar", key=f"save_{row['id']}_{idx}", type="primary"):
                                 # Preparar dados para atualização
                                 dados_update: dict[str, Any] = {
                                     'codigo': row['codigo'],
@@ -478,7 +486,7 @@ def show_insumos_page():
                                     st.error(f"Erro ao atualizar insumo: {message}")
                         
                         with col_btn2:
-                            if st.button("❌ Cancelar", key=f"cancel_{row['id']}"):
+                            if st.button("❌ Cancelar", key=f"cancel_{row['id']}_{idx}"):
                                 del st.session_state[f'edit_mode_{row["id"]}']
                                 st.rerun()
                     
@@ -490,7 +498,7 @@ def show_insumos_page():
                     show_movimentacao_modal_insumo(int(row['id']))
                     
                     # Botão para fechar o modal
-                    if st.button("❌ Fechar", key=f"close_move_{row['id']}"):
+                    if st.button("❌ Fechar", key=f"close_move_{row['id']}_{idx}"):
                         del st.session_state[f'move_mode_{row["id"]}']
                         st.session_state['modal_type'] = None
                         st.session_state['last_modal_item_id'] = None

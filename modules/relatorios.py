@@ -23,7 +23,7 @@ class RelatoriosManager:
                     'Insumo' as categoria, 0 as quantidade_atual, 0 as quantidade_minima,
                     preco_unitario as valor_unitario, 
                     0 as valor_total,
-                    localizacao, CASE WHEN ativo = 1 THEN 'Ativo' ELSE 'Inativo' END as status,
+                    localizacao, CASE WHEN ativo = TRUE THEN 'Ativo' ELSE 'Inativo' END as status,
                     unidade as unidade_medida
                 FROM insumos
                 UNION ALL
@@ -32,8 +32,8 @@ class RelatoriosManager:
                     'Equipamento Elétrico' as categoria, 1 as quantidade_atual, 0 as quantidade_minima,
                     COALESCE(valor_compra, 0) as valor_unitario, 
                     COALESCE(valor_compra, 0) as valor_total,
-                    localizacao, CASE WHEN ativo = 1 THEN 'Ativo' ELSE 'Inativo' END as status,
-                    'UND' as unidade_medida
+                    localizacao, CASE WHEN ativo = TRUE THEN 'Ativo' ELSE 'Inativo' END as status,
+                    'un' as unidade_medida
                 FROM equipamentos_eletricos
                 UNION ALL
                 SELECT 
@@ -41,8 +41,8 @@ class RelatoriosManager:
                     tipo as categoria, quantitativo as quantidade_atual, 0 as quantidade_minima,
                     COALESCE(valor, 0) as valor_unitario, 
                     (quantitativo * COALESCE(valor, 0)) as valor_total,
-                    localizacao, CASE WHEN ativo = 1 THEN 'Ativo' ELSE 'Inativo' END as status,
-                    'UND' as unidade_medida
+                    localizacao, CASE WHEN ativo = TRUE THEN 'Ativo' ELSE 'Inativo' END as status,
+                    'un' as unidade_medida
                 FROM equipamentos_manuais
                 ORDER BY tipo_item, item
             """
@@ -75,7 +75,7 @@ class RelatoriosManager:
                     u.nome as usuario_nome
                 FROM movimentacoes m
                 LEFT JOIN usuarios u ON m.usuario_id = u.id
-                WHERE DATE(m.data_movimentacao) BETWEEN ? AND ?
+                WHERE m.data_movimentacao::date BETWEEN %s AND %s
                 ORDER BY m.data_movimentacao DESC
             """
             
@@ -106,7 +106,7 @@ class RelatoriosManager:
                     10 as deficit,
                     preco_unitario as valor_unitario, localizacao
                 FROM insumos
-                WHERE ativo = 1
+                WHERE ativo = TRUE
                 LIMIT 0
             """
             

@@ -18,7 +18,7 @@ class ResponsaveisManager:
                 INSERT INTO responsaveis (
                     codigo, nome, cargo, email, telefone, cpf,
                     departamento, data_admissao, ativo, observacoes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 data.get('codigo'), data['nome'], data['cargo'], data['email'], 
                 data['telefone'], data.get('cpf'), data.get('departamento'),
@@ -26,7 +26,10 @@ class ResponsaveisManager:
                 data.get('observacoes')
             ))
             
-            responsavel_id = cursor.lastrowid
+            # Recuperar o id do responsável criado
+            cursor.execute("SELECT currval(pg_get_serial_sequence('responsaveis','id'))")
+            result = cursor.fetchone()
+            responsavel_id = result['id'] if result else None
             self.db.conn.commit()  # type: ignore
             
             # Log da ação
@@ -59,16 +62,16 @@ class ResponsaveisManager:
             
             if filters:
                 if filters.get('nome'):
-                    query += " AND nome LIKE ?"
+                    query += " AND nome LIKE %s"
                     params.append(f"%{filters['nome']}%")
                 if filters.get('cargo'):
-                    query += " AND cargo LIKE ?"
+                    query += " AND cargo LIKE %s"
                     params.append(f"%{filters['cargo']}%")
                 if filters.get('departamento'):
-                    query += " AND departamento LIKE ?"
+                    query += " AND departamento LIKE %s"
                     params.append(f"%{filters['departamento']}%")
                 if filters.get('ativo') is not None:
-                    query += " AND ativo = ?"
+                    query += " AND ativo = %s"
                     params.append(filters['ativo'])
             
             query += " ORDER BY nome"
@@ -94,9 +97,9 @@ class ResponsaveisManager:
             
             cursor.execute("""
                 UPDATE responsaveis SET
-                    codigo = ?, nome = ?, cargo = ?, email = ?, telefone = ?, cpf = ?,
-                    departamento = ?, data_admissao = ?, ativo = ?, observacoes = ?
-                WHERE id = ?
+                    codigo = %s, nome = %s, cargo = %s, email = %s, telefone = %s, cpf = %s,
+                    departamento = %s, data_admissao = %s, ativo = %s, observacoes = %s
+                WHERE id = %s
             """, (
                 data.get('codigo'), data['nome'], data['cargo'], data['email'], 
                 data['telefone'], data.get('cpf'), data.get('departamento'),
@@ -125,7 +128,7 @@ class ResponsaveisManager:
         try:
             cursor = self.db.conn.cursor()
             
-            cursor.execute("DELETE FROM responsaveis WHERE id = ?", (responsavel_id,))
+            cursor.execute("DELETE FROM responsaveis WHERE id = %s", (responsavel_id,))
             self.db.conn.commit()
             
             # Log da ação
@@ -154,16 +157,16 @@ class ResponsaveisManager:
             cursor.execute("""
                 SELECT 
                     COUNT(*) as total,
-                    SUM(CASE WHEN ativo = 1 THEN 1 ELSE 0 END) as ativos,
-                    SUM(CASE WHEN ativo = 0 THEN 1 ELSE 0 END) as inativos
+                    SUM(CASE WHEN ativo = TRUE THEN 1 ELSE 0 END) as ativos,
+                    SUM(CASE WHEN ativo = FALSE THEN 1 ELSE 0 END) as inativos
                 FROM responsaveis
             """)
             
             result = cursor.fetchone()
             return {
-                'total': result[0] or 0,
-                'ativos': result[1] or 0,
-                'inativos': result[2] or 0
+                'total': result['count'] if result else 0,
+                'ativos': result['ativos'] if result else 0,
+                'inativos': result['inativos'] if result else 0
             }
         except:
             return {'total': 0, 'ativos': 0, 'inativos': 0}

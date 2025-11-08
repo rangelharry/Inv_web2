@@ -25,11 +25,15 @@ class MovimentacoesManager:
             # Verifica se há quantidade suficiente para saída
             if data['tipo'] == 'Saída':
                 cursor.execute("""
-                    SELECT quantidade_atual FROM insumos WHERE id = ?
+                    SELECT quantidade_atual FROM insumos WHERE id = %s
                 """, (data['item_id'],))
                 item = cursor.fetchone()
-                if not item or item['quantidade_atual'] < data['quantidade']:
-                    st.error(f"❌ Quantidade insuficiente! Disponível: {item['quantidade_atual'] if item else 0}")
+                if item:
+                    quantidade_atual = item[0]
+                else:
+                    quantidade_atual = 0
+                if not item or quantidade_atual < data['quantidade']:
+                    st.error(f"❌ Quantidade insuficiente! Disponível: {quantidade_atual}")
                     return None
             # Inserção da movimentação
             cursor.execute(
@@ -39,7 +43,7 @@ class MovimentacoesManager:
                     obra_origem_id, obra_destino_id,
                     responsavel_origem_id, responsavel_destino_id,
                     valor_unitario, observacoes, data_movimentacao, usuario_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     data['item_id'], data['tipo'], data['tipo_item'], data['quantidade'],
@@ -50,7 +54,10 @@ class MovimentacoesManager:
                 )
             )
             self.db.conn.commit()  # type: ignore
-            return cursor.lastrowid
+            # Recuperar o id da movimentação criada
+            cursor.execute("SELECT currval(pg_get_serial_sequence('movimentacoes','id'))")
+            result = cursor.fetchone()
+            return result['id'] if result else 0
         except Exception as e:
             st.error(f"Erro ao registrar movimentação: {e}")
             return None
@@ -76,28 +83,28 @@ class MovimentacoesManager:
             """
             params: list[Any] = []
             if filters.get('item_nome'):
-                query += " AND i.descricao LIKE ?"
+                query += " AND i.descricao LIKE %s"
                 params.append(f"%{filters['item_nome']}%")
             if filters.get('tipo'):
-                query += " AND m.tipo = ?"
+                query += " AND m.tipo = %s"
                 params.append(filters['tipo'])
             if filters.get('obra_origem'):
-                query += " AND o1.nome LIKE ?"
+                query += " AND o1.nome LIKE %s"
                 params.append(f"%{filters['obra_origem']}%")
             if filters.get('obra_destino'):
-                query += " AND o2.nome LIKE ?"
+                query += " AND o2.nome LIKE %s"
                 params.append(f"%{filters['obra_destino']}%")
             if filters.get('responsavel_origem'):
-                query += " AND r1.nome LIKE ?"
+                query += " AND r1.nome LIKE %s"
                 params.append(f"%{filters['responsavel_origem']}%")
             if filters.get('responsavel_destino'):
-                query += " AND r2.nome LIKE ?"
+                query += " AND r2.nome LIKE %s"
                 params.append(f"%{filters['responsavel_destino']}%")
             if filters.get('data_inicio'):
-                query += " AND DATE(m.data_movimentacao) >= ?"
+                query += " AND m.data_movimentacao::date >= %s"
                 params.append(filters['data_inicio'])
             if filters.get('data_fim'):
-                query += " AND DATE(m.data_movimentacao) <= ?"
+                query += " AND m.data_movimentacao::date <= %s"
                 params.append(filters['data_fim'])
             query += " ORDER BY m.data_movimentacao DESC"
             cursor.execute(query, params)  # type: ignore
@@ -120,7 +127,7 @@ class MovimentacoesManager:
             cursor.execute("""
                 SELECT id, descricao, codigo, quantidade_atual, unidade
                 FROM insumos 
-                WHERE ativo = 1
+                WHERE ativo = TRUE
                 ORDER BY descricao
             """)
             return cursor.fetchall()
@@ -139,14 +146,14 @@ class MovimentacoesManager:
                     SUM(CASE WHEN tipo = 'Entrada' THEN 1 ELSE 0 END) as entradas,
                     SUM(CASE WHEN tipo = 'Saída' THEN 1 ELSE 0 END) as saidas
                 FROM movimentacoes 
-                WHERE strftime('%Y-%m', data_movimentacao) = strftime('%Y-%m', 'now')
+                WHERE DATE_TRUNC('month', data_movimentacao) = DATE_TRUNC('month', CURRENT_DATE)
             """)
 
             result = cursor.fetchone()
             return {
-                'total_mes': result[0] or 0,
-                'entradas_mes': result[1] or 0,
-                'saidas_mes': result[2] or 0
+                'total_mes': result['count'] if result else 0,
+                'entradas_mes': result['entradas'] if result else 0,
+                'saidas_mes': result['saidas'] if result else 0
             }
         except:
             return {'total_mes': 0, 'entradas_mes': 0, 'saidas_mes': 0}

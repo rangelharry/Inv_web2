@@ -166,6 +166,7 @@ def show_login_page():
                     
                     if success:
                         st.session_state.authenticated = True
+                        st.session_state.user = user_data  # Salvar dados do usuário na sessão
                         st.session_state.user_data = user_data
                         if user_data and 'id' in user_data:
                             st.session_state.session_token = auth_manager.create_session(user_data['id'])
@@ -209,21 +210,21 @@ def get_dashboard_metrics() -> MetricsData:
                 COUNT(*) as total,
                 SUM(CASE WHEN quantidade_atual <= quantidade_minima THEN 1 ELSE 0 END) as alertas,
                 SUM(quantidade_atual * preco_unitario) as valor_total
-            FROM insumos WHERE ativo = 1
+            FROM insumos WHERE ativo = TRUE
             UNION ALL
             SELECT 
                 'equipamentos_eletricos' as tipo,
                 COUNT(*) as total,
                 0 as alertas,
                 SUM(COALESCE(valor_compra, 0)) as valor_total
-            FROM equipamentos_eletricos WHERE ativo = 1
+            FROM equipamentos_eletricos WHERE ativo = TRUE
             UNION ALL
             SELECT 
                 'equipamentos_manuais' as tipo,
                 COUNT(*) as total,
                 0 as alertas,
                 SUM(quantitativo * COALESCE(valor, 0)) as valor_total
-            FROM equipamentos_manuais WHERE ativo = 1
+            FROM equipamentos_manuais WHERE ativo = TRUE
             UNION ALL
             SELECT 
                 'obras' as tipo,
@@ -235,7 +236,10 @@ def get_dashboard_metrics() -> MetricsData:
         
         results = cursor.fetchall()
         for row in results:
-            tipo, total, alertas, valor = row
+            tipo = row['tipo']
+            total = row['total'] 
+            alertas = row['alertas']
+            valor = row['valor_total']
             metrics[tipo] = {
                 'total': total or 0,
                 'alertas': alertas or 0,
@@ -245,14 +249,14 @@ def get_dashboard_metrics() -> MetricsData:
         # Movimentações recentes
         cursor.execute("""
             SELECT 
-                COUNT(CASE WHEN DATE(data_movimentacao) = DATE('now') THEN 1 END) as hoje,
-                COUNT(CASE WHEN DATE(data_movimentacao) >= DATE('now', '-7 days') THEN 1 END) as semana
+                COUNT(CASE WHEN data_movimentacao::date = CURRENT_DATE THEN 1 END) as hoje,
+                COUNT(CASE WHEN data_movimentacao >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as semana
             FROM movimentacoes
         """)
         mov_result = cursor.fetchone()
         metrics['movimentacoes'] = {
-            'hoje': mov_result[0] or 0,
-            'semana': mov_result[1] or 0
+            'hoje': mov_result['hoje'] if mov_result else 0,
+            'semana': mov_result['semana'] if mov_result else 0
         }
         
         return metrics

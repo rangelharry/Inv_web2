@@ -12,12 +12,16 @@ class EquipamentosEletricosManager:
     def create_equipamento(self, data: dict[str, Any]) -> int | None:
         """Cria um novo equipamento elétrico"""
         try:
+            # Garantir que a conexão esteja limpa
+            if hasattr(self.db.conn, 'rollback'):
+                self.db.conn.rollback()  # type: ignore
+            
             cursor = self.db.conn.cursor()  # type: ignore
             cursor.execute("""
                 INSERT INTO equipamentos_eletricos (
                     codigo, nome, marca, modelo, numero_serie, voltagem, potencia, 
                     status, localizacao, valor_compra, observacoes, ativo, criado_por
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 data.get('codigo', ''),
                 data['nome'],
@@ -33,7 +37,10 @@ class EquipamentosEletricosManager:
                 1,  # ativo
                 1   # criado_por (usuário admin padrão)
             ))
-            equipamento_id = cursor.lastrowid
+            # Recuperar o id do equipamento criado
+            cursor.execute("SELECT currval(pg_get_serial_sequence('equipamentos_eletricos','id'))")
+            result = cursor.fetchone()
+            equipamento_id = result['id'] if result else None
             self.db.conn.commit()  # type: ignore
             
             # Log da ação
@@ -46,33 +53,39 @@ class EquipamentosEletricosManager:
             
             return equipamento_id
         except Exception as e:
-            self.db.conn.rollback()  # type: ignore
+            # Fazer rollback explícito para limpar o estado da transação
+            if hasattr(self.db.conn, 'rollback'):
+                self.db.conn.rollback()  # type: ignore
             st.error(f"Erro ao criar equipamento: {e}")
             return None
     
     def get_equipamentos(self, filters: dict[str, Any] | None = None) -> pd.DataFrame:
         """Busca equipamentos elétricos com filtros"""
         try:
+            # Garantir que a conexão esteja limpa
+            if hasattr(self.db.conn, 'rollback'):
+                self.db.conn.rollback()  # type: ignore
+            
             cursor = self.db.conn.cursor()  # type: ignore
-            query = """SELECT id, codigo, nome, marca, modelo, status, localizacao, valor_compra, 
-                       voltagem, potencia, numero_serie, observacoes FROM equipamentos_eletricos WHERE ativo = 1"""
+            query = """SELECT id, codigo, nome, marca, modelo, status, localizacao, valor_compra, \
+                       voltagem, potencia, numero_serie, observacoes FROM equipamentos_eletricos WHERE ativo = TRUE"""
             params: list[Any] = []
             
             if filters:
                 if filters.get('nome'):
-                    query += " AND nome LIKE ?"
+                    query += " AND nome LIKE %s"
                     params.append(f"%{filters['nome']}%")
                 if filters.get('categoria'):
-                    query += " AND categoria_id = ?"
+                    query += " AND categoria_id = %s"
                     params.append(filters['categoria'])
                 if filters.get('status'):
-                    query += " AND status = ?"
+                    query += " AND status = %s"
                     params.append(filters['status'])
                 if filters.get('marca'):
-                    query += " AND marca LIKE ?"
+                    query += " AND marca LIKE %s"
                     params.append(f"%{filters['marca']}%")
                 if filters.get('localizacao'):
-                    query += " AND localizacao LIKE ?"
+                    query += " AND localizacao LIKE %s"
                     params.append(f"%{filters['localizacao']}%")
                     
             query += " ORDER BY nome"
@@ -80,25 +93,32 @@ class EquipamentosEletricosManager:
             cursor.execute(query, params)  # type: ignore
             results = cursor.fetchall()
             
-            columns = ['id', 'codigo', 'nome', 'marca', 'modelo', 'status', 'localizacao', 'valor_compra', 
+            columns = ['id', 'codigo', 'nome', 'marca', 'modelo', 'status', 'localizacao', 'valor_compra', \
                       'voltagem', 'potencia', 'numero_serie', 'observacoes']
             return pd.DataFrame(results, columns=columns) if results else pd.DataFrame()
             
         except Exception as e:
+            # Fazer rollback explícito para limpar o estado da transação
+            if hasattr(self.db.conn, 'rollback'):
+                self.db.conn.rollback()  # type: ignore
             st.error(f"Erro ao buscar equipamentos: {e}")
             return pd.DataFrame()
     
     def update_equipamento(self, equipamento_id: int, data: dict[str, Any]) -> bool:
         """Atualiza um equipamento elétrico"""
         try:
+            # Garantir que a conexão esteja limpa
+            if hasattr(self.db.conn, 'rollback'):
+                self.db.conn.rollback()  # type: ignore
+            
             cursor = self.db.conn.cursor()  # type: ignore
             
             cursor.execute("""
                 UPDATE equipamentos_eletricos SET
-                    codigo = ?, nome = ?, marca = ?, modelo = ?, numero_serie = ?,
-                    voltagem = ?, potencia = ?, status = ?, localizacao = ?, 
-                    valor_compra = ?, observacoes = ?
-                WHERE id = ?
+                    codigo = %s, nome = %s, marca = %s, modelo = %s, numero_serie = %s,
+                    voltagem = %s, potencia = %s, status = %s, localizacao = %s, 
+                    valor_compra = %s, observacoes = %s
+                WHERE id = %s
             """, (
                 data.get('codigo', ''),
                 data['nome'],
@@ -126,16 +146,22 @@ class EquipamentosEletricosManager:
             
             return True
         except Exception as e:
-            self.db.conn.rollback()  # type: ignore
+            # Fazer rollback explícito para limpar o estado da transação
+            if hasattr(self.db.conn, 'rollback'):
+                self.db.conn.rollback()  # type: ignore
             st.error(f"Erro ao atualizar equipamento: {e}")
             return False
     
     def delete_equipamento(self, equipamento_id: int, nome: str) -> bool:
         """Remove um equipamento elétrico"""
         try:
+            # Garantir que a conexão esteja limpa
+            if hasattr(self.db.conn, 'rollback'):
+                self.db.conn.rollback()  # type: ignore
+            
             cursor = self.db.conn.cursor()  # type: ignore
             
-            cursor.execute("DELETE FROM equipamentos_eletricos WHERE id = ?", (equipamento_id,))
+            cursor.execute("DELETE FROM equipamentos_eletricos WHERE id = %s", (equipamento_id,))
             self.db.conn.commit()  # type: ignore
             
             # Log da ação
@@ -148,7 +174,9 @@ class EquipamentosEletricosManager:
             
             return True
         except Exception as e:
-            self.db.conn.rollback()  # type: ignore
+            # Fazer rollback explícito para limpar o estado da transação
+            if hasattr(self.db.conn, 'rollback'):
+                self.db.conn.rollback()  # type: ignore
             st.error(f"Erro ao remover equipamento: {e}")
             return False
     
@@ -183,7 +211,7 @@ class EquipamentosEletricosManager:
             """)
             result = cursor.fetchone()
             return {
-                'total': result[0] or 0,
+                'total': result['count'] if result else 0,
                 'disponiveis': result[1] or 0,
                 'manutencao': result[2] or 0,
                 'valor_total': result[3] or 0
@@ -267,7 +295,7 @@ def show_equipamentos_eletricos_page():
             st.write("---")
 
             # Exibir tabela com botões de edição
-            for _, row in df_paginado.iterrows():
+            for idx, row in df_paginado.iterrows():
                 with st.container():
                     cols = st.columns([0.8, 1.5, 1.2, 1.2, 1, 1, 1, 1, 1, 1, 1, 1])
                     with cols[0]:
@@ -284,17 +312,20 @@ def show_equipamentos_eletricos_page():
                         localizacao = row['localizacao'] if row['localizacao'] else 'Almoxarifado'
                         st.markdown(f'''<span style="position:relative;cursor:pointer;" title="Localização atual: {localizacao}">{localizacao} <span style='color:#888'>&#9432;</span></span>''', unsafe_allow_html=True)
                     with cols[6]:
-                        st.write(f"R$ {row['valor_compra']:,.2f}")
+                        if row['valor_compra'] is not None:
+                            st.write(f"R$ {row['valor_compra']:,.2f}")
+                        else:
+                            st.write("N/A")
                     with cols[7]:
                         st.write(row['voltagem'])
                     with cols[8]:
                         st.write(row['potencia'])
                     with cols[9]:
-                        if st.button("✏️", key=f"edit_eq_{row['id']}", help="Editar equipamento"):
+                        if st.button("✏️", key=f"edit_eq_{row['id']}_{idx}", help="Editar equipamento"):
                             st.session_state[f'edit_mode_eq_{row["id"]}'] = True
                             st.rerun()
                     with cols[10]:
-                        if st.button("📦", key=f"move_eq_{row['id']}", help="Movimentar equipamento"):
+                        if st.button("📦", key=f"move_eq_{row['id']}_{idx}", help="Movimentar equipamento"):
                             # Fecha todos os outros modais de movimentação
                             for k in list(st.session_state.keys()):
                                 if isinstance(k, str) and k.startswith("move_mode_eq_") and k != f"move_mode_eq_{row['id']}":
@@ -302,7 +333,7 @@ def show_equipamentos_eletricos_page():
                             st.session_state[f"move_mode_eq_{row['id']}"] = True
                             st.rerun()
                     with cols[11]:
-                        if st.button("❌", key=f"del_eq_{row['id']}", help="Excluir equipamento"):
+                        if st.button("❌", key=f"del_eq_{row['id']}_{idx}", help="Excluir equipamento"):
                             st.session_state[f'confirm_delete_eq_{row["id"]}'] = True
                             st.rerun()
                 

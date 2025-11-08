@@ -1,5 +1,5 @@
 [global]
-dataFrameSerialization = "legacy"
+# dataFrameSerialization = "legacy"  # Removida - não mais suportada
 
 [server]
 headless = true

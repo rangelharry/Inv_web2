@@ -26,19 +26,19 @@ class LogsAuditoriaManager:
             
             if filters:
                 if filters.get('usuario'):  # type: ignore
-                    query += " AND u.nome LIKE ?"
+                    query += " AND u.nome LIKE %s"
                     params.append(f"%{filters['usuario']}%")  # type: ignore
                 if filters.get('modulo'):  # type: ignore
-                    query += " AND l.modulo = ?"
+                    query += " AND l.modulo = %s"
                     params.append(filters['modulo'])  # type: ignore
                 if filters.get('acao'):  # type: ignore
-                    query += " AND l.acao = ?"
+                    query += " AND l.acao = %s"
                     params.append(filters['acao'])  # type: ignore
                 if filters.get('data_inicio'):  # type: ignore
-                    query += " AND DATE(l.data_acao) >= ?"
+                    query += " AND l.data_acao::date >= %s"
                     params.append(filters['data_inicio'])  # type: ignore
                 if filters.get('data_fim'):  # type: ignore
-                    query += " AND DATE(l.data_acao) <= ?"
+                    query += " AND l.data_acao::date <= %s"
                     params.append(filters['data_fim'])  # type: ignore
             
             query += " ORDER BY l.data_acao DESC LIMIT 1000"
@@ -78,21 +78,23 @@ class LogsAuditoriaManager:
             # Logs das últimas 24h
             cursor.execute("""
                 SELECT COUNT(*) FROM logs_auditoria 
-                WHERE datetime(data_acao) >= datetime('now', '-24 hours')
+                WHERE data_acao >= NOW() - INTERVAL '24 hours'
             """)
-            logs_24h = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            logs_24h = result['count'] if result else 0
             
             # Logs da última semana
             cursor.execute("""
                 SELECT COUNT(*) FROM logs_auditoria 
-                WHERE datetime(data_acao) >= datetime('now', '-7 days')
+                WHERE data_acao >= NOW() - INTERVAL '7 days'
             """)
-            logs_semana = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            logs_semana = result['count'] if result else 0
             
             # Módulo mais ativo
             cursor.execute("""
                 SELECT modulo, COUNT(*) as total FROM logs_auditoria 
-                WHERE datetime(data_acao) >= datetime('now', '-7 days')
+                WHERE data_acao >= NOW() - INTERVAL '7 days'
                 GROUP BY modulo ORDER BY total DESC LIMIT 1
             """)
             modulo_ativo = cursor.fetchone()
@@ -101,7 +103,7 @@ class LogsAuditoriaManager:
             cursor.execute("""
                 SELECT u.nome, COUNT(*) as total FROM logs_auditoria l
                 JOIN usuarios u ON l.usuario_id = u.id
-                WHERE datetime(l.data_acao) >= datetime('now', '-7 days')
+                WHERE l.data_acao >= NOW() - INTERVAL '7 days'
                 GROUP BY u.nome ORDER BY total DESC LIMIT 1
             """)
             usuario_ativo = cursor.fetchone()

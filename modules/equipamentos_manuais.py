@@ -26,7 +26,7 @@ class EquipamentosManuaisManager:
                 INSERT INTO equipamentos_manuais (
                     codigo, descricao, tipo, marca, status, localizacao, 
                     quantitativo, valor, observacoes, ativo, criado_por
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 data.get('codigo', ''),
                 data['nome'],  # nome vai para descricao
@@ -40,7 +40,10 @@ class EquipamentosManuaisManager:
                 1,  # ativo
                 1   # criado_por (usuário admin padrão)
             ))
-            equipamento_id = cursor.lastrowid
+            # Recuperar o id do equipamento criado
+            cursor.execute("SELECT currval(pg_get_serial_sequence('equipamentos_manuais','id'))")
+            result = cursor.fetchone()
+            equipamento_id = result['id'] if result else None
             self.db.conn.commit()  # type: ignore
             
             # Log da ação
@@ -59,27 +62,31 @@ class EquipamentosManuaisManager:
     def get_equipamentos(self, filters: dict[str, Any] | None = None) -> pd.DataFrame:
         """Busca equipamentos manuais com filtros"""
         try:
+            # Garantir que a conexão esteja limpa
+            if hasattr(self.db.conn, 'rollback'):
+                self.db.conn.rollback()  # type: ignore
+            
             cursor = self.db.conn.cursor()  # type: ignore
-            query = """SELECT id, codigo, descricao as nome, marca, status, estado, localizacao, 
-                       quantitativo, tipo, valor, data_compra, loja, observacoes 
-                       FROM equipamentos_manuais WHERE ativo = 1"""
+            query = """SELECT id, codigo, descricao as nome, marca, status, estado, localizacao, \
+                       quantitativo, tipo, valor, data_compra, loja, observacoes \
+                       FROM equipamentos_manuais WHERE ativo = TRUE"""
             params: list[Any] = []
             
             if filters:
                 if filters.get('nome'):
-                    query += " AND descricao LIKE ?"
+                    query += " AND descricao LIKE %s"
                     params.append(f"%{filters['nome']}%")
                 if filters.get('categoria'):
-                    query += " AND categoria_id = ?"
+                    query += " AND categoria_id = %s"
                     params.append(filters['categoria'])
                 if filters.get('status'):
-                    query += " AND status = ?"
+                    query += " AND status = %s"
                     params.append(filters['status'])
                 if filters.get('marca'):
-                    query += " AND marca LIKE ?"
+                    query += " AND marca LIKE %s"
                     params.append(f"%{filters['marca']}%")
                 if filters.get('localizacao'):
-                    query += " AND localizacao LIKE ?"
+                    query += " AND localizacao LIKE %s"
                     params.append(f"%{filters['localizacao']}%")
                     
             query += " ORDER BY descricao"
@@ -93,6 +100,9 @@ class EquipamentosManuaisManager:
             return df
             
         except Exception as e:
+            # Fazer rollback explícito para limpar o estado da transação
+            if hasattr(self.db.conn, 'rollback'):
+                self.db.conn.rollback()  # type: ignore
             st.error(f"Erro ao buscar equipamentos: {e}")
             return pd.DataFrame()
     
@@ -103,9 +113,9 @@ class EquipamentosManuaisManager:
             
             cursor.execute("""
                 UPDATE equipamentos_manuais SET
-                    codigo = ?, descricao = ?, marca = ?, tipo = ?, status = ?,
-                    localizacao = ?, quantitativo = ?, valor = ?, observacoes = ?
-                WHERE id = ?
+                    codigo = %s, descricao = %s, marca = %s, tipo = %s, status = %s,
+                    localizacao = %s, quantitativo = %s, valor = %s, observacoes = %s
+                WHERE id = %s
             """, (
                 data.get('codigo', ''),
                 data['nome'],  # nome vai para descricao
@@ -139,7 +149,7 @@ class EquipamentosManuaisManager:
         try:
             cursor = self.db.conn.cursor()  # type: ignore
             
-            cursor.execute("DELETE FROM equipamentos_manuais WHERE id = ?", (equipamento_id,))
+            cursor.execute("DELETE FROM equipamentos_manuais WHERE id = %s", (equipamento_id,))
             self.db.conn.commit()  # type: ignore
             
             # Log da ação
@@ -183,11 +193,11 @@ class EquipamentosManuaisManager:
                     SUM(CASE WHEN status = 'Manutenção' THEN 1 ELSE 0 END) as manutencao,
                     SUM(CASE WHEN status = 'Em Uso' THEN 1 ELSE 0 END) as em_uso,
                     SUM(CASE WHEN valor_compra IS NOT NULL THEN valor_compra ELSE 0 END) as valor_total
-                FROM equipamentos_manuais WHERE ativo = 1
+                FROM equipamentos_manuais WHERE ativo = TRUE
             """)
             result = cursor.fetchone()
             return {
-                'total': result[0] or 0,
+                'total': result['count'] if result else 0,
                 'disponiveis': result[1] or 0,
                 'manutencao': result[2] or 0,
                 'em_uso': result[3] or 0,
@@ -269,7 +279,7 @@ def show_equipamentos_manuais_page():
                 
                 # Exibir equipamentos com botões de ação
             # Botões de ação para cada equipamento
-            for _, row in df_paginado.iterrows():
+            for idx, row in df_paginado.iterrows():
                 col1, col2, col3, col4 = st.columns([6, 1, 1, 1])
                 with col1:
                     localizacao = row['localizacao'] if row['localizacao'] else 'Almoxarifado'
@@ -282,11 +292,11 @@ def show_equipamentos_manuais_page():
                     �💰 R$ {safe_float_convert(row['valor']):,.2f}
                     """, unsafe_allow_html=True)
                 with col2:
-                    if st.button("✏️ Editar", key=f"edit_em_{row['id']}", help="Editar equipamento"):
+                    if st.button("✏️ Editar", key=f"edit_em_{row['id']}_{idx}", help="Editar equipamento"):
                         st.session_state[f'edit_mode_em_{row["id"]}'] = True
                         st.rerun()
                 with col3:
-                    if st.button("📦 Mover", key=f"move_em_{row['id']}", help="Movimentar equipamento"):
+                    if st.button("📦 Mover", key=f"move_em_{row['id']}_{idx}", help="Movimentar equipamento"):
                         # Fecha todos os outros modais de movimentação
                         for k in list(st.session_state.keys()):
                             if isinstance(k, str) and k.startswith("move_mode_em_") and k != f"move_mode_em_{row['id']}":
@@ -294,7 +304,7 @@ def show_equipamentos_manuais_page():
                         st.session_state[f"move_mode_em_{row['id']}"] = True
                         st.rerun()
                 with col4:
-                    if st.button("❌ Excluir", key=f"del_em_{row['id']}", help="Excluir equipamento"):
+                    if st.button("❌ Excluir", key=f"del_em_{row['id']}_{idx}", help="Excluir equipamento"):
                         if manager.delete_equipamento(int(row['id']), row['nome']):
                             st.success(f"Equipamento {row['nome']} removido com sucesso!")
                             st.rerun()

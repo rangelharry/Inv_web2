@@ -29,13 +29,15 @@ class UsuariosManager:
             cursor.execute("""
                 INSERT INTO usuarios (
                     nome, email, password_hash, perfil, ativo
-                ) VALUES (?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s)
             """, (
                 data['nome'], data['email'], password_hash.decode('utf-8'),
                 data['perfil'], 1 if data.get('ativo', True) else 0
             ))
-            
-            usuario_id = cursor.lastrowid  # type: ignore
+            # Recuperar o id do usuário criado
+            cursor.execute("SELECT currval(pg_get_serial_sequence('usuarios','id'))")
+            result = cursor.fetchone()
+            usuario_id = result['id'] if result else None
             self.db.conn.commit()  # type: ignore
             
             # Log da ação
@@ -60,7 +62,7 @@ class UsuariosManager:
                     id, nome, email, perfil, ativo, 
                     data_criacao, ultimo_login,
                     CASE 
-                        WHEN ativo = 1 THEN 'Ativo' 
+                        WHEN ativo = TRUE THEN 'Ativo' 
                         ELSE 'Inativo' 
                     END as status_texto
                 FROM usuarios
@@ -71,20 +73,20 @@ class UsuariosManager:
             
             if filters:
                 if filters.get('nome'):  # type: ignore
-                    query += " AND nome LIKE ?"  # type: ignore
+                    query += " AND nome LIKE %s"  # type: ignore
                     params.append(f"%{filters['nome']}%")  # type: ignore
                 
                 if filters.get('email'):  # type: ignore
-                    query += " AND email LIKE ?"  # type: ignore
+                    query += " AND email LIKE %s"  # type: ignore
                     params.append(f"%{filters['email']}%")  # type: ignore
                 
                 if filters.get('perfil') and filters['perfil'] != 'Todos':  # type: ignore
-                    query += " AND perfil = ?"  # type: ignore
+                    query += " AND perfil = %s"  # type: ignore
                     params.append(filters['perfil'])  # type: ignore
                 
                 if filters.get('status') and filters['status'] != 'Todos':  # type: ignore
-                    ativo = 1 if filters['status'] == 'Ativo' else 0  # type: ignore
-                    query += " AND ativo = ?"  # type: ignore
+                    ativo = TRUE if filters['status'] == 'Ativo' else FALSE  # type: ignore
+                    query += " AND ativo = %s"  # type: ignore
                     params.append(ativo)  # type: ignore
             
             query += " ORDER BY nome"  # type: ignore
@@ -93,7 +95,8 @@ class UsuariosManager:
             rows = cursor.fetchall()
             
             if rows:
-                df = pd.DataFrame([dict(row) for row in rows])  # type: ignore
+                columns = [desc[0] for desc in cursor.description]
+                df = pd.DataFrame([dict(zip(columns, row)) for row in rows])  # type: ignore
                 return df
             else:
                 return pd.DataFrame()  # type: ignore
@@ -115,7 +118,7 @@ class UsuariosManager:
                 return False  # type: ignore
             
             # Primeiro, verificar se o usuário existe ANTES de qualquer operação
-            cursor.execute("SELECT id, nome, email FROM usuarios WHERE id = ?", (usuario_id_int,))  # type: ignore
+            cursor.execute("SELECT id, nome, email FROM usuarios WHERE id = %s", (usuario_id_int,))  # type: ignore
             user_before = cursor.fetchone()  # type: ignore
             
             if not user_before:  # type: ignore
@@ -128,25 +131,25 @@ class UsuariosManager:
             
             # Campos básicos
             if 'nome' in data:  # type: ignore
-                update_parts.append("nome = ?")  # type: ignore
+                update_parts.append("nome = %s")  # type: ignore
                 params.append(data['nome'])  # type: ignore
                 
             if 'email' in data:  # type: ignore
-                update_parts.append("email = ?")  # type: ignore
+                update_parts.append("email = %s")  # type: ignore
                 params.append(data['email'])  # type: ignore
                 
             if 'perfil' in data:  # type: ignore
-                update_parts.append("perfil = ?")  # type: ignore
+                update_parts.append("perfil = %s")  # type: ignore
                 params.append(data['perfil'])  # type: ignore
                 
             if 'ativo' in data:  # type: ignore
-                update_parts.append("ativo = ?")  # type: ignore
+                update_parts.append("ativo = %s")  # type: ignore
                 params.append(1 if data['ativo'] else 0)  # type: ignore
             
             # Senha
             if data.get('nova_senha'):  # type: ignore
                 password_hash = bcrypt.hashpw(data['nova_senha'].encode('utf-8'), bcrypt.gensalt())  # type: ignore
-                update_parts.append("password_hash = ?")  # type: ignore
+                update_parts.append("password_hash = %s")  # type: ignore
                 params.append(password_hash.decode('utf-8'))  # type: ignore
             
             if not update_parts:  # type: ignore
@@ -155,21 +158,20 @@ class UsuariosManager:
             
             # Executar UPDATE
             params.append(usuario_id_int)  # Adicionar ID no final  # type: ignore
-            query = f"UPDATE usuarios SET {', '.join(update_parts)} WHERE id = ?"  # type: ignore
-            
+            query = f"UPDATE usuarios SET {', '.join(update_parts)} WHERE id = %s"  # type: ignore
             
             cursor.execute(query, params)  # type: ignore
             rows_affected = cursor.rowcount  # type: ignore
             
             # Verificar usuário APÓS o update mas ANTES do commit
-            cursor.execute("SELECT id, nome, email FROM usuarios WHERE id = ?", (usuario_id_int,))  # type: ignore
+            cursor.execute("SELECT id, nome, email FROM usuarios WHERE id = %s", (usuario_id_int,))  # type: ignore
             user_after = cursor.fetchone()  # type: ignore
             
             # Commit
             self.db.conn.commit()  # type: ignore
             
             # Verificar usuário APÓS commit
-            cursor.execute("SELECT id, nome, email FROM usuarios WHERE id = ?", (usuario_id_int,))  # type: ignore
+            cursor.execute("SELECT id, nome, email FROM usuarios WHERE id = %s", (usuario_id_int,))  # type: ignore
             user_final = cursor.fetchone()  # type: ignore
             
             if rows_affected > 0:  # type: ignore
@@ -189,7 +191,7 @@ class UsuariosManager:
         """Remove um usuário"""
         try:
             cursor = self.db.conn.cursor()  # type: ignore
-            cursor.execute("UPDATE usuarios SET ativo = 0 WHERE id = ?", (usuario_id,))  # type: ignore
+            cursor.execute("UPDATE usuarios SET ativo = FALSE WHERE id = %s", (usuario_id,))  # type: ignore
             self.db.conn.commit()  # type: ignore
             
             # Log da ação
@@ -216,7 +218,7 @@ class UsuariosManager:
         """Verifica se a senha foi atualizada (para debug)"""
         try:
             cursor = self.db.conn.cursor()  # type: ignore
-            cursor.execute("SELECT password_hash FROM usuarios WHERE id = ?", (usuario_id,))  # type: ignore
+            cursor.execute("SELECT password_hash FROM usuarios WHERE id = %s", (usuario_id,))  # type: ignore
             result = cursor.fetchone()  # type: ignore
             if result:  # type: ignore
                 return result[0][:20] + "..."  # Primeiros 20 caracteres do hash  # type: ignore
@@ -230,14 +232,15 @@ class UsuariosManager:
             cursor = self.db.conn.cursor()  # type: ignore
             
             # Total de usuários
-            cursor.execute("SELECT COUNT(*) FROM usuarios WHERE ativo = 1")
-            total = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM usuarios WHERE ativo = TRUE")
+            result = cursor.fetchone()
+            total = result['count'] if result else 0
             
             # Usuários por perfil
             cursor.execute("""
                 SELECT perfil, COUNT(*) 
                 FROM usuarios 
-                WHERE ativo = 1 
+                WHERE ativo = TRUE 
                 GROUP BY perfil
             """)
             perfis = dict(cursor.fetchall())
@@ -247,9 +250,10 @@ class UsuariosManager:
                 SELECT COUNT(*) 
                 FROM usuarios 
                 WHERE ultimo_login >= datetime('now', '-30 days')
-                AND ativo = 1
+                AND ativo = TRUE
             """)
-            logins_mes = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            logins_mes = result['count'] if result else 0
             
             return {
                 'total': total,

@@ -79,7 +79,7 @@ class AuthenticationManager:
             """, (nome, email, password_hash, perfil, True))
             
             result = cursor.fetchone()
-            user_id = result[0] if result else None
+            user_id = result['id'] if result else None
             conn.commit()
             
             # Log da ação
@@ -110,17 +110,29 @@ class AuthenticationManager:
                 WHERE email = %s
             """, (email,))
             user = cursor.fetchone()
+            
             if not user:
                 return False, "Usuário não encontrado", None
-            user_id, nome, email, password_hash, perfil, ativo = user
+            
+            user_id = user['id']
+            nome = user['nome']
+            email = user['email']
+            password_hash = user['password_hash']
+            perfil = user['perfil']
+            ativo = user['ativo']
+            
             if not ativo:
                 return False, "Usuário inativo", None
+            
             print(f"[DEBUG] Hash lido do banco: {repr(password_hash)} | Tipo: {type(password_hash)} | Tamanho: {len(password_hash) if password_hash else 0}")
+            
             # Se o hash vier como bytes, converte para string e limpa espaços/quebras
             if isinstance(password_hash, bytes):
                 password_hash = password_hash.decode('utf-8')
             password_hash = str(password_hash).strip()
+            
             print(f"[DEBUG] Hash após tratamento: {repr(password_hash)} | Tamanho: {len(password_hash)}")
+            
             if self.verify_password(password, password_hash):
                 # Atualiza último login
                 cursor.execute("""
@@ -129,15 +141,19 @@ class AuthenticationManager:
                     WHERE id = %s
                 """, (datetime.now(), user_id))
                 conn.commit()
+                
                 # Log de login
                 self.log_action(user_id, 'login', 'usuarios', user_id, 'Login realizado')
+                
                 return True, "Login realizado com sucesso", {
                     'id': user_id,
                     'nome': nome,
                     'email': email,
                     'perfil': perfil
                 }
+            
             return False, "Senha incorreta", None
+            
         except Exception as e:
             print(f"[DEBUG] Exceção na autenticação: {e}")
             return False, f"Erro na autenticação: {e}", None
@@ -156,7 +172,7 @@ class AuthenticationManager:
             # Verifica senha atual
             cursor.execute("SELECT password_hash FROM usuarios WHERE id = %s", (user_id,))
             result = cursor.fetchone()
-            if not result or not self.verify_password(old_password, result[0]):
+            if not result or not self.verify_password(old_password, result['password_hash']):
                 return False, "Senha atual incorreta"
             
             # Atualiza senha
@@ -185,7 +201,7 @@ class AuthenticationManager:
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT id, nome, email, perfil, ativo, criado_em, ultimo_login
+                SELECT id, nome, email, perfil, ativo, data_criacao, ultimo_login
                 FROM usuarios 
                 ORDER BY nome
             """)
@@ -193,13 +209,13 @@ class AuthenticationManager:
             users = []
             for row in cursor.fetchall():
                 users.append({
-                    'id': row[0],
-                    'nome': row[1],
-                    'email': row[2],
-                    'perfil': row[3],
-                    'ativo': row[4],
-                    'criado_em': row[5],
-                    'ultimo_login': row[6]
+                    'id': row['id'],
+                    'nome': row['nome'],
+                    'email': row['email'],
+                    'perfil': row['perfil'],
+                    'ativo': row['ativo'],
+                    'data_criacao': row['data_criacao'],
+                    'ultimo_login': row['ultimo_login']
                 })
             
             return users
@@ -299,15 +315,34 @@ class AuthenticationManager:
             print(f"Erro ao registrar log: {e}")
     
     def get_session_user(self) -> Optional[dict]:
-        """Retorna usuário da sessão atual"""
+        """Retorna o usuário da sessão atual"""
         if 'user' in st.session_state:
             return st.session_state.user
         return None
+    
+    def create_session(self, user_id: int) -> str:
+        """Cria uma sessão para o usuário"""
+        import secrets
+        session_token = secrets.token_urlsafe(32)
+        st.session_state['session_token'] = session_token
+        st.session_state['user_id'] = user_id
+        return session_token
     
     def is_admin(self) -> bool:
         """Verifica se usuário atual é admin"""
         user = self.get_session_user()
         return user and user.get('perfil') == 'admin'
+    
+    def check_permission(self, user_profile: str, action: str) -> bool:
+        """Verifica se o perfil de usuário tem permissão para a ação"""
+        permissions = {
+            'admin': ['create', 'read', 'update', 'delete'],
+            'gestor': ['create', 'read', 'update'],
+            'usuario': ['read', 'update']
+        }
+        
+        profile_permissions = permissions.get(user_profile, [])
+        return action in profile_permissions
     
     def require_auth(self):
         """Decorator/middleware para páginas que requerem autenticação"""
@@ -331,7 +366,7 @@ class AuthenticationManager:
         
         # Limpa outros dados da sessão se necessário
         for key in list(st.session_state.keys()):
-            if key.startswith('auth_'):
+            if isinstance(key, str) and key.startswith('auth_'):
                 del st.session_state[key]
 
 # Instância global do gerenciador de autenticação
