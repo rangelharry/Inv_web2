@@ -12,36 +12,40 @@ class LogsAuditoriaManager:
     def get_logs(self, filters: dict = None) -> pd.DataFrame:  # type: ignore
         """Busca logs de auditoria com filtros"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            # Garantir que a conexão esteja limpa
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             
+            cursor = self.db.get_connection().cursor()  # type: ignore
+            
+            # Query corrigida usando as colunas reais da tabela logs_auditoria
             query = """
                 SELECT 
-                    l.id, l.data_acao, l.acao, l.modulo,
-                    l.detalhes, u.nome as usuario_nome, u.email as usuario_email
+                    l.id, l.timestamp as data_acao, l.action as acao, l.table_name as modulo,
+                    l.details as detalhes, l.user_name as usuario_nome, '' as usuario_email
                 FROM logs_auditoria l
-                LEFT JOIN usuarios u ON l.usuario_id = u.id
                 WHERE 1=1
             """
             params = []
             
             if filters:
                 if filters.get('usuario'):  # type: ignore
-                    query += " AND u.nome LIKE %s"
+                    query += " AND l.user_name LIKE %s"
                     params.append(f"%{filters['usuario']}%")  # type: ignore
                 if filters.get('modulo'):  # type: ignore
-                    query += " AND l.modulo = %s"
+                    query += " AND l.table_name = %s"
                     params.append(filters['modulo'])  # type: ignore
                 if filters.get('acao'):  # type: ignore
-                    query += " AND l.acao = %s"
+                    query += " AND l.action = %s"
                     params.append(filters['acao'])  # type: ignore
                 if filters.get('data_inicio'):  # type: ignore
-                    query += " AND l.data_acao::date >= %s"
+                    query += " AND l.timestamp::date >= %s"
                     params.append(filters['data_inicio'])  # type: ignore
                 if filters.get('data_fim'):  # type: ignore
-                    query += " AND l.data_acao::date <= %s"
+                    query += " AND l.timestamp::date <= %s"
                     params.append(filters['data_fim'])  # type: ignore
             
-            query += " ORDER BY l.data_acao DESC LIMIT 1000"
+            query += " ORDER BY l.timestamp DESC LIMIT 1000"
             
             cursor.execute(query, params)  # type: ignore
             results = cursor.fetchall()
@@ -54,13 +58,16 @@ class LogsAuditoriaManager:
             return pd.DataFrame(results, columns=columns) if results else pd.DataFrame()
             
         except Exception as e:
+            # Fazer rollback explícito para limpar o estado da transação
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao buscar logs: {e}")
             return pd.DataFrame()
     
     def get_modulos_disponiveis(self) -> list[str]:
         """Busca módulos disponíveis nos logs"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             cursor.execute("SELECT DISTINCT modulo FROM logs_auditoria ORDER BY modulo")
             return [row[0] for row in cursor.fetchall()]
         except:
@@ -73,7 +80,7 @@ class LogsAuditoriaManager:
     def get_dashboard_stats(self) -> dict[str, Any]:
         """Estatísticas para o dashboard"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             
             # Logs das últimas 24h
             cursor.execute("""

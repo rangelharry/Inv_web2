@@ -198,6 +198,10 @@ def show_login_page():
 def get_dashboard_metrics() -> MetricsData:
     """Busca métricas do dashboard com cache"""
     conn = db.get_connection()
+    # Garantir que a conexão esteja limpa
+    if hasattr(conn, 'rollback'):
+        conn.rollback()  # type: ignore
+    
     cursor = conn.cursor()
     
     metrics: MetricsData = {}
@@ -262,6 +266,9 @@ def get_dashboard_metrics() -> MetricsData:
         return metrics
         
     except Exception as e:
+        # Fazer rollback explícito para limpar o estado da transação
+        if hasattr(conn, 'rollback'):
+            conn.rollback()  # type: ignore
         st.error(f"Erro ao buscar métricas: {e}")
         return {}
 

@@ -13,10 +13,10 @@ class EquipamentosEletricosManager:
         """Cria um novo equipamento elétrico"""
         try:
             # Garantir que a conexão esteja limpa
-            if hasattr(self.db.conn, 'rollback'):
-                self.db.conn.rollback()  # type: ignore
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             cursor.execute("""
                 INSERT INTO equipamentos_eletricos (
                     codigo, nome, marca, modelo, numero_serie, voltagem, potencia, 
@@ -41,7 +41,7 @@ class EquipamentosEletricosManager:
             cursor.execute("SELECT currval(pg_get_serial_sequence('equipamentos_eletricos','id'))")
             result = cursor.fetchone()
             equipamento_id = result['id'] if result else None
-            self.db.conn.commit()  # type: ignore
+            self.db.get_connection().commit()  # type: ignore
             
             # Log da ação
             auth_manager.log_action(
@@ -54,8 +54,8 @@ class EquipamentosEletricosManager:
             return equipamento_id
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
-            if hasattr(self.db.conn, 'rollback'):
-                self.db.conn.rollback()  # type: ignore
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao criar equipamento: {e}")
             return None
     
@@ -63,10 +63,10 @@ class EquipamentosEletricosManager:
         """Busca equipamentos elétricos com filtros"""
         try:
             # Garantir que a conexão esteja limpa
-            if hasattr(self.db.conn, 'rollback'):
-                self.db.conn.rollback()  # type: ignore
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             query = """SELECT id, codigo, nome, marca, modelo, status, localizacao, valor_compra, \
                        voltagem, potencia, numero_serie, observacoes FROM equipamentos_eletricos WHERE ativo = TRUE"""
             params: list[Any] = []
@@ -99,8 +99,8 @@ class EquipamentosEletricosManager:
             
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
-            if hasattr(self.db.conn, 'rollback'):
-                self.db.conn.rollback()  # type: ignore
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao buscar equipamentos: {e}")
             return pd.DataFrame()
     
@@ -108,10 +108,10 @@ class EquipamentosEletricosManager:
         """Atualiza um equipamento elétrico"""
         try:
             # Garantir que a conexão esteja limpa
-            if hasattr(self.db.conn, 'rollback'):
-                self.db.conn.rollback()  # type: ignore
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             
             cursor.execute("""
                 UPDATE equipamentos_eletricos SET
@@ -134,7 +134,7 @@ class EquipamentosEletricosManager:
                 equipamento_id
             ))
             
-            self.db.conn.commit()  # type: ignore
+            self.db.get_connection().commit()  # type: ignore
             
             # Log da ação
             auth_manager.log_action(
@@ -147,8 +147,8 @@ class EquipamentosEletricosManager:
             return True
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
-            if hasattr(self.db.conn, 'rollback'):
-                self.db.conn.rollback()  # type: ignore
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao atualizar equipamento: {e}")
             return False
     
@@ -156,13 +156,13 @@ class EquipamentosEletricosManager:
         """Remove um equipamento elétrico"""
         try:
             # Garantir que a conexão esteja limpa
-            if hasattr(self.db.conn, 'rollback'):
-                self.db.conn.rollback()  # type: ignore
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             
             cursor.execute("DELETE FROM equipamentos_eletricos WHERE id = %s", (equipamento_id,))
-            self.db.conn.commit()  # type: ignore
+            self.db.get_connection().commit()  # type: ignore
             
             # Log da ação
             auth_manager.log_action(
@@ -175,15 +175,15 @@ class EquipamentosEletricosManager:
             return True
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
-            if hasattr(self.db.conn, 'rollback'):
-                self.db.conn.rollback()  # type: ignore
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao remover equipamento: {e}")
             return False
     
     def get_categorias(self) -> list[str]:
         """Busca categorias de equipamentos elétricos da tabela categorias"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             cursor.execute("""
                 SELECT c.nome FROM categorias c 
                 WHERE c.tipo = 'equipamento_eletrico' OR c.tipo IS NULL
@@ -200,7 +200,7 @@ class EquipamentosEletricosManager:
     def get_dashboard_stats(self) -> dict[str, Any]:
         """Estatísticas para o dashboard"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             cursor.execute("""
                 SELECT 
                     COUNT(*) as total,

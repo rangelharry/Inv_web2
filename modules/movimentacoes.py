@@ -21,7 +21,11 @@ class MovimentacoesManager:
     def create_movimentacao(self, data: dict[str, Any], usuario_id: int) -> int | None:
         """Cria uma nova movimentação"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            # Garantir que a conexão esteja limpa
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
+            
+            cursor = self.db.get_connection().cursor()  # type: ignore
             # Verifica se há quantidade suficiente para saída
             if data['tipo'] == 'Saída':
                 cursor.execute("""
@@ -53,19 +57,26 @@ class MovimentacoesManager:
                     data.get('valor_unitario'), data.get('observacoes'), datetime.now(), usuario_id
                 )
             )
-            self.db.conn.commit()  # type: ignore
+            self.db.get_connection().commit()  # type: ignore
             # Recuperar o id da movimentação criada
             cursor.execute("SELECT currval(pg_get_serial_sequence('movimentacoes','id'))")
             result = cursor.fetchone()
             return result['id'] if result else 0
         except Exception as e:
+            # Fazer rollback explícito para limpar o estado da transação
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao registrar movimentação: {e}")
             return None
 
     def get_movimentacoes(self, filters: dict[str, Any]) -> pd.DataFrame:
         """Busca movimentações conforme filtros"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            # Garantir que a conexão esteja limpa
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
+            
+            cursor = self.db.get_connection().cursor()  # type: ignore
             query = """
                 SELECT m.id, m.data_movimentacao, m.tipo, m.quantidade, m.motivo,
                        o1.nome as obra_origem, o2.nome as obra_destino,
@@ -117,13 +128,20 @@ class MovimentacoesManager:
             ]
             return pd.DataFrame(results, columns=columns) if results else pd.DataFrame()
         except Exception as e:
+            # Fazer rollback explícito para limpar o estado da transação
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao buscar movimentações: {e}")
             return pd.DataFrame()
 
     def get_items_para_movimentacao(self) -> list[tuple[int, str, str, float, str]]:
         """Busca itens disponíveis para movimentação"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            # Garantir que a conexão esteja limpa
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
+            
+            cursor = self.db.get_connection().cursor()  # type: ignore
             cursor.execute("""
                 SELECT id, descricao, codigo, quantidade_atual, unidade
                 FROM insumos 
@@ -131,13 +149,16 @@ class MovimentacoesManager:
                 ORDER BY descricao
             """)
             return cursor.fetchall()
-        except:
+        except Exception as e:
+            # Fazer rollback explícito para limpar o estado da transação
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             return []
 
     def get_dashboard_stats(self) -> dict[str, int]:
         """Estatísticas para o dashboard"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
 
             # Movimentações do mês atual
             cursor.execute("""
@@ -244,7 +265,7 @@ def show_movimentacoes_page():
             if insumos:
                 st.markdown("#### 📦 Insumos - Movimentação Rápida")
                 st.info("💡 Clique em 'Movimentar' para abrir o modal com campos completos (destino, responsável e quantidade)")
-                for item in insumos:
+                for idx, item in enumerate(insumos):
                     col1, col2, col3, col4 = st.columns([4,2,2,2])
                     with col1:
                         st.write(f"**{item['descricao']}** ({item['codigo']})")
@@ -253,7 +274,7 @@ def show_movimentacoes_page():
                     with col3:
                         st.write(f"ID: {item['id']}")
                     with col4:
-                        if st.button(f"📦 Movimentar", key=f"movimentar_insumo_{item['id']}", help="Abrir modal de movimentação rápida"):
+                        if st.button(f"📦 Movimentar", key=f"movimentar_insumo_{item['id']}_{idx}", help="Abrir modal de movimentação rápida"):
                             from modules.movimentacao_modal import show_movimentacao_modal_insumo
                             show_movimentacao_modal_insumo(item['id'])
             else:

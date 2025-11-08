@@ -13,12 +13,26 @@ from typing import Any
 
 class InsumosManager:
     def __init__(self):
-        self.conn = db.get_connection()
+        try:
+            self.db = db
+            # Garantir que a conexão esteja limpa
+            conn = self.db.get_connection()
+            if hasattr(conn, 'rollback'):
+                conn.rollback()
+        except Exception as e:
+            st.error(f"Erro ao conectar com o banco: {e}")
+            raise
 
     def get_categorias(self, tipo: str = 'insumo') -> list[dict[str, Any]]:
         """Busca categorias disponíveis"""
         try:
-            cursor = self.conn.cursor()
+            # Garantir que a conexão esteja limpa
+            conn = self.db.get_connection()
+            if hasattr(conn, 'rollback'):
+                conn.rollback()
+
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
             cursor.execute("""
             SELECT id, nome FROM categorias 
             WHERE tipo = %s AND ativo = TRUE 
@@ -26,13 +40,23 @@ class InsumosManager:
             """, (tipo,))
             return [dict(zip([desc[0] for desc in cursor.description], row)) for row in cursor.fetchall()]
         except Exception as e:
+            # Fazer rollback explícito para limpar o estado da transação
+            conn = self.db.get_connection()
+            if hasattr(conn, 'rollback'):
+                conn.rollback()
             st.error(f"Erro ao buscar categorias: {e}")
             return []
     
     def create_insumo(self, dados: dict[str, Any], user_id: int) -> tuple[bool, str]:
         """Cria novo insumo"""
         try:
-            cursor = self.conn.cursor()
+            # Garantir que a conexão esteja limpa
+            conn = self.db.get_connection()
+            if hasattr(conn, 'rollback'):
+                conn.rollback()
+                
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
             # Verifica se código já existe
             cursor.execute("SELECT id FROM insumos WHERE codigo = %s", (dados['codigo'],))
             if cursor.fetchone():
@@ -52,7 +76,7 @@ class InsumosManager:
             cursor.execute("SELECT id FROM insumos WHERE codigo = %s", (dados['codigo'],))
             result = cursor.fetchone()
             insumo_id = result['id'] if result else None
-            self.conn.commit()
+            conn.commit()
             # Log da ação
             auth_manager.log_action(
                 user_id, 'criar', 'insumos', insumo_id,
@@ -60,12 +84,22 @@ class InsumosManager:
             )
             return True, "Insumo criado com sucesso"
         except Exception as e:
+            # Fazer rollback explícito para limpar o estado da transação
+            conn = self.db.get_connection()
+            if hasattr(conn, 'rollback'):
+                conn.rollback()
             return False, f"Erro ao criar insumo: {str(e)}"
     
     def update_insumo(self, insumo_id: int, dados: dict[str, Any], user_id: int) -> tuple[bool, str]:
         """Atualiza insumo existente"""
         try:
-            cursor = self.conn.cursor()
+            # Garantir que a conexão esteja limpa
+            conn = self.db.get_connection()
+            if hasattr(conn, 'rollback'):
+                conn.rollback()
+                
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
             # Busca dados atuais
             cursor.execute("SELECT * FROM insumos WHERE id = %s", (insumo_id,))
             old_data = dict(zip([desc[0] for desc in cursor.description], cursor.fetchone()))
@@ -86,7 +120,7 @@ class InsumosManager:
                 dados['fornecedor'], dados['marca'],
                 dados['localizacao'], dados['observacoes'], dados['data_validade'], insumo_id
             ))
-            self.conn.commit()
+            conn.commit()
             # Log da ação
             auth_manager.log_action(
                 user_id, 'editar', 'insumos', insumo_id,
@@ -95,12 +129,17 @@ class InsumosManager:
             )
             return True, "Insumo atualizado com sucesso"
         except Exception as e:
+            # Fazer rollback explícito para limpar o estado da transação
+            conn = self.db.get_connection()
+            if hasattr(conn, 'rollback'):
+                conn.rollback()
             return False, f"Erro ao atualizar insumo: {str(e)}"
     
     def delete_insumo(self, insumo_id: int, user_id: int) -> tuple[bool, str]:
         """Remove insumo (soft delete)"""
         try:
-            cursor = self.conn.cursor()
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
             # Busca dados do insumo
             cursor.execute("SELECT * FROM insumos WHERE id = %s", (insumo_id,))
             row = cursor.fetchone()
@@ -108,7 +147,7 @@ class InsumosManager:
                 return False, "Insumo não encontrado"
             insumo_data = dict(zip([desc[0] for desc in cursor.description], row))
             cursor.execute("UPDATE insumos SET ativo = FALSE WHERE id = %s", (insumo_id,))
-            self.conn.commit()
+            conn.commit()
             # Log da ação
             auth_manager.log_action(
                 user_id, 'excluir', 'insumos', insumo_id,
@@ -122,10 +161,12 @@ class InsumosManager:
         """Busca insumos com filtros"""
         try:
             # Garantir que a conexão esteja limpa
-            if hasattr(self.conn, 'rollback'):
-                self.conn.rollback()  # type: ignore
+            conn = self.db.get_connection()
+            if hasattr(conn, 'rollback'):
+                conn.rollback()  # type: ignore
             
-            cursor = self.conn.cursor()
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
             query = """
             SELECT i.*, c.nome as categoria_nome
             FROM insumos i
@@ -145,18 +186,21 @@ class InsumosManager:
                     params.extend([busca, busca, busca])  # type: ignore
             query += " ORDER BY i.codigo"
             cursor.execute(query, params)  # type: ignore
-            return [dict(zip([desc[0] for desc in cursor.description], row)) for row in cursor.fetchall()]
+            results = cursor.fetchall()
+            return [dict(row) for row in results]  # Converter RealDictRow para dict normal
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
-            if hasattr(self.conn, 'rollback'):
-                self.conn.rollback()  # type: ignore
+            conn = self.db.get_connection()
+            if hasattr(conn, 'rollback'):
+                conn.rollback()  # type: ignore
             st.error(f"Erro ao buscar insumos: {e}")
             return []
     
     def get_insumo_by_id(self, insumo_id: int) -> dict[str, Any] | None:
         """Busca insumo por ID"""
         try:
-            cursor = self.conn.cursor()
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
             cursor.execute("""
             SELECT i.*, c.nome as categoria_nome
             FROM insumos i
@@ -172,7 +216,8 @@ class InsumosManager:
     def ajustar_estoque(self, insumo_id: int, quantidade: float, tipo_movimento: str, motivo: str, user_id: int) -> tuple[bool, str]:
         """Ajusta estoque de insumo"""
         try:
-            cursor = self.conn.cursor()
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
             # Busca insumo atual
             cursor.execute("SELECT * FROM insumos WHERE id = %s", (insumo_id,))
             row = cursor.fetchone()
@@ -204,7 +249,7 @@ class InsumosManager:
                 tipo_movimento, insumo_id, insumo['codigo'], insumo['descricao'],
                 quantidade, insumo['unidade'], motivo, f"Ajuste de estoque: {motivo}", user_id
             ))
-            self.conn.commit()
+            conn.commit()
             # Log da ação
             auth_manager.log_action(
                 user_id, 'editar', 'insumos', insumo_id,
@@ -278,13 +323,14 @@ def show_insumos_page():
             col_stat3.metric("Sem Estoque", sem_estoque, delta_color="inverse")
 
             # Tabela de insumos
-            df = pd.DataFrame(insumos)
-            df_display = df.copy()
-            df_display['Código'] = df['codigo']
-            df_display['Descrição'] = df['descricao']
-            df_display['Categoria'] = df['categoria_nome']
-            df_display['Atual'] = df['quantidade_atual'].astype(str) + ' ' + df['unidade']
-            df_display['Mínimo'] = df['quantidade_minima'].astype(str) + ' ' + df['unidade']
+            if isinstance(insumos, list) and len(insumos) > 0 and isinstance(insumos[0], dict):
+                df = pd.DataFrame(insumos)
+                df_display = df.copy()
+                df_display['Código'] = df['codigo']
+                df_display['Descrição'] = df['descricao']
+                df_display['Categoria'] = df.get('categoria_nome', 'N/A')
+                df_display['Atual'] = df['quantidade_atual'].astype(str) + ' ' + df['unidade']
+                df_display['Mínimo'] = df['quantidade_minima'].astype(str) + ' ' + df['unidade']
             def get_status_estoque_completo(row: pd.Series) -> str:
                 if row['quantidade_atual'] == 0:
                     return "🔴 Sem estoque"
@@ -318,11 +364,7 @@ def show_insumos_page():
             
             start_idx = (page - 1) * num_rows
             end_idx = start_idx + num_rows
-            df_paginado = df_display.iloc[start_idx:end_idx]
-            
-            # Preparar DataFrame para exibição com status
-            df_exibicao = df_paginado.copy()
-            df_exibicao['Status'] = df_exibicao.apply(get_status_estoque_completo, axis=1)  # type: ignore
+            insumos_paginado = insumos[start_idx:end_idx]  # Usar lista original
             
             # Cabeçalho da tabela
             col_header1, col_header2, col_header3, col_header4, col_header5, col_header6, col_header7, col_header8, col_header9 = st.columns([0.8, 1.5, 2, 1.2, 1, 1, 0.8, 0.8, 0.8])
@@ -349,7 +391,7 @@ def show_insumos_page():
             st.write("---")
             
             # Exibir tabela com informações e botões de edição
-            for idx, row in df_exibicao.iterrows():
+            for idx, row in enumerate(insumos_paginado):
                 with st.container():
                     col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([0.8, 1.5, 2, 1.2, 1, 1, 0.8, 0.8, 0.8])
                     
@@ -360,7 +402,8 @@ def show_insumos_page():
                         st.write(row['descricao'])
                     
                     with col3:
-                        st.write(row['categoria_nome'])
+                        categoria_nome = row.get('categoria_nome', 'N/A')
+                        st.write(categoria_nome)
                     
                     with col4:
                         st.write(f"{row['quantidade_atual']} {row['unidade']}")
@@ -369,7 +412,14 @@ def show_insumos_page():
                         st.write(f"{row['quantidade_minima']} {row['unidade']}")
                     
                     with col6:
-                        st.write(row['Status'])
+                        # Calcular status
+                        if row['quantidade_atual'] == 0:
+                            status = "🔴 Sem estoque"
+                        elif row['quantidade_atual'] <= row['quantidade_minima']:
+                            status = "🟡 Estoque baixo"
+                        else:
+                            status = "🟢 Normal"
+                        st.write(status)
                     
                     with col7:
                         if st.button("✏️", key=f"edit_{row['id']}_{idx}", help="Editar insumo"):

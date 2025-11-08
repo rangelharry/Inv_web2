@@ -15,7 +15,7 @@ class RelatoriosManager:
     def gerar_relatorio_inventario_completo(self) -> pd.DataFrame:  # type: ignore
         """Gera relatório completo do inventário"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             
             query = """
                 SELECT 
@@ -65,7 +65,7 @@ class RelatoriosManager:
     def gerar_relatorio_movimentacoes(self, data_inicio: str, data_fim: str) -> pd.DataFrame:  # type: ignore
         """Gera relatório de movimentações por período"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             
             query = """
                 SELECT 
@@ -97,29 +97,31 @@ class RelatoriosManager:
     def gerar_relatorio_estoque_baixo(self) -> pd.DataFrame:  # type: ignore
         """Gera relatório de itens com estoque baixo"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             
             query = """
                 SELECT 
-                    descricao as item, codigo as codigo_patrimonial, 'Insumo' as categoria, 'Insumo' as tipo_item,
-                    0 as quantidade_atual, 10 as quantidade_minima, 
-                    10 as deficit,
-                    preco_unitario as valor_unitario, localizacao
-                FROM insumos
-                WHERE ativo = TRUE
-                LIMIT 0
+                    i.descricao as item, 
+                    i.codigo as codigo_patrimonial, 
+                    COALESCE(c.nome, 'Sem categoria') as categoria, 
+                    'Insumo' as tipo_item,
+                    i.quantidade_atual, 
+                    i.quantidade_minima, 
+                    GREATEST(0, i.quantidade_minima - i.quantidade_atual) as deficit,
+                    COALESCE(i.preco_unitario, 0) as valor_unitario, 
+                    COALESCE(i.localizacao, 'N/A') as localizacao
+                FROM insumos i
+                LEFT JOIN categorias c ON i.categoria_id = c.id
+                WHERE i.ativo = TRUE 
+                AND (i.quantidade_atual <= i.quantidade_minima OR i.quantidade_atual = 0)
+                ORDER BY deficit DESC, i.quantidade_atual ASC
             """
             
             cursor.execute(query)  # type: ignore
             results = cursor.fetchall()  # type: ignore
             
-            columns = [
-                'item', 'codigo_patrimonial', 'categoria', 'tipo_item',
-                'quantidade_atual', 'quantidade_minima', 'deficit',
-                'valor_unitario', 'localizacao'
-            ]
-            
-            return pd.DataFrame(results, columns=columns)  # type: ignore
+            # Converter RealDictRow para dict normal
+            return pd.DataFrame([dict(row) for row in results])  # type: ignore
             
         except Exception as e:
             st.error(f"Erro ao gerar relatório de estoque baixo: {e}")  # type: ignore
@@ -259,33 +261,46 @@ def show_relatorios_page():  # type: ignore
                 st.metric("Total Movimentações", len(df))  # type: ignore
             
             with col2:
-                entradas = len(df[df['tipo_movimentacao'] == 'Entrada'])  # type: ignore
+                entradas = len(df[df['tipo'] == 'Entrada'])  # type: ignore
                 st.metric("Entradas", entradas)  # type: ignore
             
             with col3:
-                saidas = len(df[df['tipo_movimentacao'] == 'Saída'])  # type: ignore
+                saidas = len(df[df['tipo'] == 'Saída'])  # type: ignore
                 st.metric("Saídas", saidas)  # type: ignore
             
             # Gráficos
             col1, col2 = st.columns(2)  # type: ignore
             
             with col1:
-                fig = px.pie(  # type: ignore
-                        df,  # type: ignore
-                    names='tipo_movimentacao',  # type: ignore
-                    title="Movimentações por Tipo"  # type: ignore
-                )  # type: ignore
-                st.plotly_chart(fig, width='stretch')  # type: ignore
+                if not df.empty and 'tipo' in df.columns:  # type: ignore
+                    tipo_values = df['tipo'].value_counts()  # type: ignore
+                    if len(tipo_values) > 0:  # type: ignore
+                        fig = px.pie(  # type: ignore
+                                df,  # type: ignore
+                            names='tipo',  # type: ignore
+                            title="Movimentações por Tipo"  # type: ignore
+                        )  # type: ignore
+                        st.plotly_chart(fig, width='stretch')  # type: ignore
+                    else:
+                        st.info("📊 Não há dados de tipos para exibir.")  # type: ignore
+                else:
+                    st.info("📊 Dados insuficientes para gráfico de tipos.")  # type: ignore
             
             with col2:
-                motivo_counts = df['motivo'].value_counts().head(5)  # type: ignore
-                fig = px.bar(  # type: ignore
-                        x=motivo_counts.values,  # type: ignore
-                    y=motivo_counts.index,  # type: ignore
-                    orientation='h',  # type: ignore
-                    title="Top 5 Motivos"  # type: ignore
-                )  # type: ignore
-                st.plotly_chart(fig, width='stretch')  # type: ignore
+                if not df.empty and 'motivo' in df.columns:  # type: ignore
+                    motivo_counts = df['motivo'].value_counts().head(5)  # type: ignore
+                    if len(motivo_counts) > 0:  # type: ignore
+                        fig = px.bar(  # type: ignore
+                                x=motivo_counts.values,  # type: ignore
+                            y=motivo_counts.index,  # type: ignore
+                            orientation='h',  # type: ignore
+                            title="Top 5 Motivos"  # type: ignore
+                        )  # type: ignore
+                        st.plotly_chart(fig, width='stretch')  # type: ignore
+                    else:
+                        st.info("📊 Não há dados de motivos para exibir.")  # type: ignore
+                else:
+                    st.info("📊 Dados insuficientes para gráfico de motivos.")  # type: ignore
             
             # Tabela de dados
             st.dataframe(df, width='stretch', hide_index=True)  # type: ignore
@@ -336,16 +351,28 @@ def show_relatorios_page():  # type: ignore
                 st.metric("Categorias Afetadas", categorias_afetadas)  # type: ignore
             
             # Gráfico
-            fig = px.bar(  # type: ignore
-                df.head(10),  # type: ignore
-                x='deficit',  # type: ignore
-                y='item',  # type: ignore
-                orientation='h',  # type: ignore
-                title="Top 10 Itens com Maior Déficit",  # type: ignore
-                color='deficit',  # type: ignore
-                color_continuous_scale='Reds'  # type: ignore
-            )  # type: ignore
-            st.plotly_chart(fig, width='stretch')  # type: ignore
+            if len(df) > 0:  # type: ignore
+                # Verificar se há dados válidos para o gráfico
+                df_grafico = df.head(10)  # type: ignore
+                if not df_grafico.empty and 'deficit' in df_grafico.columns and 'item' in df_grafico.columns:  # type: ignore
+                    # Verificar se há valores válidos na coluna deficit
+                    if df_grafico['deficit'].notna().any():  # type: ignore
+                        fig = px.bar(  # type: ignore
+                            df_grafico,  # type: ignore
+                            x='deficit',  # type: ignore
+                            y='item',  # type: ignore
+                            orientation='h',  # type: ignore
+                            title="Top 10 Itens com Maior Déficit",  # type: ignore
+                            color='deficit',  # type: ignore
+                            color_continuous_scale='Reds'  # type: ignore
+                        )  # type: ignore
+                        st.plotly_chart(fig, width='stretch')  # type: ignore
+                    else:
+                        st.info("📊 Não há dados de déficit válidos para exibir o gráfico.")  # type: ignore
+                else:
+                    st.info("📊 Dados insuficientes para gerar o gráfico.")  # type: ignore
+            else:
+                st.info("📊 Nenhum item com estoque baixo encontrado.")  # type: ignore
             
             # Tabela
             st.dataframe(  # type: ignore
@@ -402,26 +429,36 @@ def show_relatorios_page():  # type: ignore
             
             with col1:
                 # Distribuição de valor por categoria
-                valor_categoria = df_inventario.groupby('categoria')['valor_total'].sum().sort_values(ascending=False).head(8)  # type: ignore
-
-                fig = px.pie(  # type: ignore
-                    values=valor_categoria.values,  # type: ignore
-                    names=valor_categoria.index,  # type: ignore
-                    title="Distribuição de Valor por Categoria"  # type: ignore
-                )  # type: ignore
-                st.plotly_chart(fig, width='stretch')  # type: ignore
+                if not df_inventario.empty and 'categoria' in df_inventario.columns and 'valor_total' in df_inventario.columns:  # type: ignore
+                    valor_categoria = df_inventario.groupby('categoria')['valor_total'].sum().sort_values(ascending=False).head(8)  # type: ignore
+                    if len(valor_categoria) > 0 and valor_categoria.sum() > 0:  # type: ignore
+                        fig = px.pie(  # type: ignore
+                            values=valor_categoria.values,  # type: ignore
+                            names=valor_categoria.index,  # type: ignore
+                            title="Distribuição de Valor por Categoria"  # type: ignore
+                        )  # type: ignore
+                        st.plotly_chart(fig, width='stretch')  # type: ignore
+                    else:
+                        st.info("📊 Não há dados de valor por categoria para exibir.")  # type: ignore
+                else:
+                    st.info("📊 Dados insuficientes para gráfico de categorias.")  # type: ignore
             
             with col2:
                 # Itens por tipo
-                tipo_counts = df_inventario['tipo_item'].value_counts()  # type: ignore
-
-                fig = px.bar(  # type: ignore
-                    x=tipo_counts.index,  # type: ignore
-                    y=tipo_counts.values,  # type: ignore
-                    title="Quantidade de Itens por Tipo"  # type: ignore
-                )  # type: ignore
-                fig.update_layout(xaxis_title="Tipo", yaxis_title="Quantidade")  # type: ignore
-                st.plotly_chart(fig, width='stretch')  # type: ignore
+                if not df_inventario.empty and 'tipo_item' in df_inventario.columns:  # type: ignore
+                    tipo_counts = df_inventario['tipo_item'].value_counts()  # type: ignore
+                    if len(tipo_counts) > 0:  # type: ignore
+                        fig = px.bar(  # type: ignore
+                            x=tipo_counts.index,  # type: ignore
+                            y=tipo_counts.values,  # type: ignore
+                            title="Quantidade de Itens por Tipo"  # type: ignore
+                        )  # type: ignore
+                        fig.update_layout(xaxis_title="Tipo", yaxis_title="Quantidade")  # type: ignore
+                        st.plotly_chart(fig, width='stretch')  # type: ignore
+                    else:
+                        st.info("📊 Não há dados de tipos para exibir.")  # type: ignore
+                else:
+                    st.info("📊 Dados insuficientes para gráfico de tipos.")  # type: ignore
         
         else:
             st.info("📊 Carregue os dados do inventário para visualizar o dashboard executivo.")

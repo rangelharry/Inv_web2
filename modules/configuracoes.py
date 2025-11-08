@@ -53,6 +53,7 @@ class ConfiguracoesManager:
                 """, (chave, valor, descricao, tipo, categoria))
             self.db.get_connection().commit()
         except Exception as e:
+            self.db.get_connection().rollback()
             print(f"Erro ao criar configurações padrão: {str(e)}")
     
     def get_config(self, chave: str) -> Optional[str]:
@@ -86,6 +87,7 @@ class ConfiguracoesManager:
             
             return True
         except Exception as e:
+            self.db.get_connection().rollback()
             st.error(f"Erro ao salvar configuração: {str(e)}")
             return False
     

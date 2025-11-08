@@ -21,7 +21,11 @@ class UsuariosManager:
     def create_usuario(self, data: Dict[str, Any]) -> Optional[int]:
         """Cria um novo usuário"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            # Garantir que a conexão esteja limpa
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
+            
+            cursor = self.db.get_connection().cursor()  # type: ignore
             
             # Hash da senha
             password_hash = bcrypt.hashpw(data['senha'].encode('utf-8'), bcrypt.gensalt())
@@ -38,7 +42,7 @@ class UsuariosManager:
             cursor.execute("SELECT currval(pg_get_serial_sequence('usuarios','id'))")
             result = cursor.fetchone()
             usuario_id = result['id'] if result else None
-            self.db.conn.commit()  # type: ignore
+            self.db.get_connection().commit()  # type: ignore
             
             # Log da ação
             auth_manager.log_action(  # type: ignore
@@ -48,14 +52,16 @@ class UsuariosManager:
             
             return usuario_id
         except Exception as e:
-            self.db.conn.rollback()  # type: ignore
+            # Fazer rollback explícito para limpar o estado da transação
+            if hasattr(self.db.get_connection(), 'rollback'):
+                self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao criar usuário: {str(e)}")  # type: ignore
             return None
     
     def get_usuarios(self, filters: Dict[str, Any] = None) -> pd.DataFrame:  # type: ignore
         """Busca usuários com filtros"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             
             query = """
                 SELECT 
@@ -108,7 +114,7 @@ class UsuariosManager:
     def update_usuario(self, usuario_id: int, data: Dict[str, Any]) -> bool:
         """Atualiza dados do usuário"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             
             # Converter usuario_id para int se necessário
             try:  # type: ignore
@@ -168,7 +174,7 @@ class UsuariosManager:
             user_after = cursor.fetchone()  # type: ignore
             
             # Commit
-            self.db.conn.commit()  # type: ignore
+            self.db.get_connection().commit()  # type: ignore
             
             # Verificar usuário APÓS commit
             cursor.execute("SELECT id, nome, email FROM usuarios WHERE id = %s", (usuario_id_int,))  # type: ignore
@@ -182,7 +188,7 @@ class UsuariosManager:
                 return False
                 
         except Exception as e:
-            self.db.conn.rollback()  # type: ignore
+            self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao atualizar usuário: {str(e)}")  # type: ignore
             import traceback  # type: ignore
             return False
@@ -190,9 +196,9 @@ class UsuariosManager:
     def delete_usuario(self, usuario_id: int, nome: str) -> bool:
         """Remove um usuário"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             cursor.execute("UPDATE usuarios SET ativo = FALSE WHERE id = %s", (usuario_id,))  # type: ignore
-            self.db.conn.commit()  # type: ignore
+            self.db.get_connection().commit()  # type: ignore
             
             # Log da ação
             auth_manager.log_action(  # type: ignore
@@ -202,7 +208,7 @@ class UsuariosManager:
             
             return True
         except Exception as e:
-            self.db.conn.rollback()  # type: ignore
+            self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao desativar usuário: {str(e)}")  # type: ignore
             return False
     
@@ -217,7 +223,7 @@ class UsuariosManager:
     def verify_password_updated(self, usuario_id: int) -> str:  # type: ignore
         """Verifica se a senha foi atualizada (para debug)"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             cursor.execute("SELECT password_hash FROM usuarios WHERE id = %s", (usuario_id,))  # type: ignore
             result = cursor.fetchone()  # type: ignore
             if result:  # type: ignore
@@ -229,7 +235,7 @@ class UsuariosManager:
     def get_dashboard_stats(self) -> Dict[str, Any]:
         """Estatísticas para dashboard"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             
             # Total de usuários
             cursor.execute("SELECT COUNT(*) FROM usuarios WHERE ativo = TRUE")

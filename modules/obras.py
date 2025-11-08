@@ -14,7 +14,7 @@ class ObrasManager:
     def create_obra(self, data: dict[str, Any]) -> int | None:
         """Cria uma nova obra/departamento"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
 
             cursor.execute("""
                 INSERT INTO obras (
@@ -36,7 +36,7 @@ class ObrasManager:
             cursor.execute("SELECT currval(pg_get_serial_sequence('obras','id'))")
             result = cursor.fetchone()
             obra_id = result['id'] if result else None
-            self.db.conn.commit()  # type: ignore
+            self.db.get_connection().commit()  # type: ignore
 
             # Log da ação
             auth_manager.log_action(
@@ -48,14 +48,14 @@ class ObrasManager:
 
             return obra_id
         except Exception as e:
-            self.db.conn.rollback()  # type: ignore
+            self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao criar obra: {e}")
             return None
 
     def get_obras(self, filters: dict[str, Any] | None = None) -> pd.DataFrame:
         """Busca obras com filtros"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
 
             query = """
                 SELECT 
@@ -100,7 +100,7 @@ class ObrasManager:
     def update_obra(self, obra_id: int, data: dict[str, Any]) -> bool:
         """Atualiza uma obra/departamento"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
 
             cursor.execute("""
                 UPDATE obras SET
@@ -117,7 +117,7 @@ class ObrasManager:
                 data.get('valor_orcado', 0), data.get('valor_gasto', 0), obra_id
             ))
 
-            self.db.conn.commit()  # type: ignore
+            self.db.get_connection().commit()  # type: ignore
 
             auth_manager.log_action(
                 data.get('criado_por', 1),
@@ -128,17 +128,17 @@ class ObrasManager:
 
             return True
         except Exception as e:
-            self.db.conn.rollback()  # type: ignore
+            self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao atualizar obra: {e}")
             return False
 
     def delete_obra(self, obra_id: int, nome: str) -> bool:
         """Remove uma obra/departamento"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
 
             cursor.execute("DELETE FROM obras WHERE id = %s", (obra_id,))
-            self.db.conn.commit()  # type: ignore
+            self.db.get_connection().commit()  # type: ignore
 
             auth_manager.log_action(
                 1,
@@ -148,7 +148,7 @@ class ObrasManager:
             )
             return True
         except Exception as e:
-            self.db.conn.rollback()  # type: ignore
+            self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao remover obra: {e}")
             return False
 
@@ -161,7 +161,7 @@ class ObrasManager:
     def get_dashboard_stats(self) -> dict[str, int]:
         """Estatísticas para o dashboard"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             cursor.execute("""
                 SELECT 
                     COUNT(*) as total,

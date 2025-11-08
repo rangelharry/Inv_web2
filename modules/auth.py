@@ -56,6 +56,10 @@ class AuthenticationManager:
         """Cria novo usuário"""
         try:
             conn = self.get_connection()
+            # Garantir que a conexão esteja limpa
+            if hasattr(conn, 'rollback'):
+                conn.rollback()  # type: ignore
+            
             cursor = conn.cursor()
             
             # Validações
@@ -95,7 +99,7 @@ class AuthenticationManager:
             return True, f"Usuário {nome} criado com sucesso!"
             
         except Exception as e:
-            if 'conn' in locals():
+            if 'conn' in locals() and hasattr(conn, 'rollback'):
                 conn.rollback()
             return False, f"Erro ao criar usuário: {e}"
     
@@ -103,6 +107,10 @@ class AuthenticationManager:
         """Autentica usuário"""
         try:
             conn = self.get_connection()
+            # Garantir que a conexão esteja limpa
+            if hasattr(conn, 'rollback'):
+                conn.rollback()  # type: ignore
+            
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT id, nome, email, password_hash, perfil, ativo
@@ -297,6 +305,10 @@ class AuthenticationManager:
         """Registra ação no log de auditoria"""
         try:
             conn = self.get_connection()
+            # Garantir que a conexão esteja limpa
+            if hasattr(conn, 'rollback'):
+                conn.rollback()  # type: ignore
+            
             cursor = conn.cursor()
             
             # Pega nome do usuário
@@ -312,6 +324,9 @@ class AuthenticationManager:
             conn.commit()
             
         except Exception as e:
+            # Fazer rollback explícito para limpar o estado da transação
+            if 'conn' in locals() and hasattr(conn, 'rollback'):
+                conn.rollback()  # type: ignore
             print(f"Erro ao registrar log: {e}")
     
     def get_session_user(self) -> Optional[dict]:

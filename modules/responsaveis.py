@@ -12,7 +12,7 @@ class ResponsaveisManager:
     def create_responsavel(self, data: dict[str, Any]) -> int | None:
         """Cria um novo responsável"""
         try:
-            cursor = self.db.conn.cursor()  # type: ignore
+            cursor = self.db.get_connection().cursor()  # type: ignore
             
             cursor.execute("""
                 INSERT INTO responsaveis (
@@ -30,7 +30,7 @@ class ResponsaveisManager:
             cursor.execute("SELECT currval(pg_get_serial_sequence('responsaveis','id'))")
             result = cursor.fetchone()
             responsavel_id = result['id'] if result else None
-            self.db.conn.commit()  # type: ignore
+            self.db.get_connection().commit()  # type: ignore
             
             # Log da ação
             auth_manager.log_action(
@@ -42,14 +42,14 @@ class ResponsaveisManager:
             
             return responsavel_id
         except Exception as e:
-            self.db.conn.rollback()  # type: ignore
+            self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao criar responsável: {e}")
             return None
     
     def get_responsaveis(self, filters: dict[str, Any] | None = None) -> pd.DataFrame:
         """Busca responsáveis com filtros"""
         try:
-            cursor = self.db.conn.cursor()
+            cursor = self.db.get_connection().cursor()
             
             query = """
                 SELECT 
@@ -93,7 +93,7 @@ class ResponsaveisManager:
     def update_responsavel(self, responsavel_id: int, data: dict[str, Any]) -> bool:
         """Atualiza um responsável"""
         try:
-            cursor = self.db.conn.cursor()
+            cursor = self.db.get_connection().cursor()
             
             cursor.execute("""
                 UPDATE responsaveis SET
@@ -107,7 +107,7 @@ class ResponsaveisManager:
                 data.get('observacoes'), responsavel_id
             ))
             
-            self.db.conn.commit()
+            self.db.get_connection().commit()
             
             # Log da ação
             auth_manager.log_action(
@@ -119,17 +119,17 @@ class ResponsaveisManager:
             
             return True
         except Exception as e:
-            self.db.conn.rollback()
+            self.db.get_connection().rollback()
             st.error(f"Erro ao atualizar responsável: {e}")
             return False
     
     def delete_responsavel(self, responsavel_id: int, nome: str) -> bool:
         """Remove um responsável"""
         try:
-            cursor = self.db.conn.cursor()
+            cursor = self.db.get_connection().cursor()
             
             cursor.execute("DELETE FROM responsaveis WHERE id = %s", (responsavel_id,))
-            self.db.conn.commit()
+            self.db.get_connection().commit()
             
             # Log da ação
             auth_manager.log_action(
@@ -141,7 +141,7 @@ class ResponsaveisManager:
             
             return True
         except Exception as e:
-            self.db.conn.rollback()
+            self.db.get_connection().rollback()
             st.error(f"Erro ao remover responsável: {e}")
             return False
     
@@ -152,7 +152,7 @@ class ResponsaveisManager:
     def get_dashboard_stats(self) -> dict[str, int]:
         """Estatísticas para o dashboard"""
         try:
-            cursor = self.db.conn.cursor()
+            cursor = self.db.get_connection().cursor()
             
             cursor.execute("""
                 SELECT 
