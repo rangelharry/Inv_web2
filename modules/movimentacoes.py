@@ -22,10 +22,14 @@ class MovimentacoesManager:
         """Cria uma nova movimentação"""
         try:
             # Garantir que a conexão esteja limpa
-            if hasattr(self.db.get_connection(), 'rollback'):
-                self.db.get_connection().rollback()  # type: ignore
+            conn = self.db.get_connection()
+            if conn and hasattr(conn, 'rollback'):
+                conn.rollback()
             
-            cursor = self.db.get_connection().cursor()  # type: ignore
+            cursor = conn.cursor() if conn else None
+            if not cursor:
+                return None
+                
             # Verifica se há quantidade suficiente para saída
             if data['tipo'] == 'Saída':
                 cursor.execute("""
@@ -61,11 +65,12 @@ class MovimentacoesManager:
             # Recuperar o id da movimentação criada
             cursor.execute("SELECT currval(pg_get_serial_sequence('movimentacoes','id'))")
             result = cursor.fetchone()
-            return result['id'] if result else 0
+            return result.get('id', 0) if result and hasattr(result, 'get') else 0
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
-            if hasattr(self.db.get_connection(), 'rollback'):
-                self.db.get_connection().rollback()  # type: ignore
+            conn = self.db.get_connection()
+            if conn and hasattr(conn, 'rollback'):
+                conn.rollback()
             st.error(f"Erro ao registrar movimentação: {e}")
             return None
 
@@ -73,10 +78,13 @@ class MovimentacoesManager:
         """Busca movimentações conforme filtros"""
         try:
             # Garantir que a conexão esteja limpa
-            if hasattr(self.db.get_connection(), 'rollback'):
-                self.db.get_connection().rollback()  # type: ignore
+            conn = self.db.get_connection()
+            if conn and hasattr(conn, 'rollback'):
+                conn.rollback()
             
-            cursor = self.db.get_connection().cursor()  # type: ignore
+            cursor = conn.cursor() if conn else None
+            if not cursor:
+                return None
             query = """
                 SELECT m.id, m.data_movimentacao, m.tipo, m.quantidade, m.motivo,
                        o1.nome as obra_origem, o2.nome as obra_destino,
@@ -129,8 +137,9 @@ class MovimentacoesManager:
             return pd.DataFrame(results, columns=columns) if results else pd.DataFrame()
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
-            if hasattr(self.db.get_connection(), 'rollback'):
-                self.db.get_connection().rollback()  # type: ignore
+            conn = self.db.get_connection()
+            if conn and hasattr(conn, 'rollback'):
+                conn.rollback()
             st.error(f"Erro ao buscar movimentações: {e}")
             return pd.DataFrame()
 
@@ -138,10 +147,13 @@ class MovimentacoesManager:
         """Busca itens disponíveis para movimentação"""
         try:
             # Garantir que a conexão esteja limpa
-            if hasattr(self.db.get_connection(), 'rollback'):
-                self.db.get_connection().rollback()  # type: ignore
+            conn = self.db.get_connection()
+            if conn and hasattr(conn, 'rollback'):
+                conn.rollback()
             
-            cursor = self.db.get_connection().cursor()  # type: ignore
+            cursor = conn.cursor() if conn else None
+            if not cursor:
+                return None
             cursor.execute("""
                 SELECT id, descricao, codigo, quantidade_atual, unidade
                 FROM insumos 
@@ -151,14 +163,17 @@ class MovimentacoesManager:
             return cursor.fetchall()
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
-            if hasattr(self.db.get_connection(), 'rollback'):
-                self.db.get_connection().rollback()  # type: ignore
+            conn = self.db.get_connection()
+            if conn and hasattr(conn, 'rollback'):
+                conn.rollback()
             return []
 
     def get_dashboard_stats(self) -> dict[str, int]:
         """Estatísticas para o dashboard"""
         try:
-            cursor = self.db.get_connection().cursor()  # type: ignore
+            cursor = conn.cursor() if conn else None
+            if not cursor:
+                return None
 
             # Movimentações do mês atual
             cursor.execute("""
@@ -172,7 +187,7 @@ class MovimentacoesManager:
 
             result = cursor.fetchone()
             return {
-                'total_mes': result['count'] if result else 0,
+                'total_mes': result.get('count', 0) if result and hasattr(result, 'get') else 0,
                 'entradas_mes': result['entradas'] if result else 0,
                 'saidas_mes': result['saidas'] if result else 0
             }
@@ -182,8 +197,9 @@ class MovimentacoesManager:
 # Função principal da página
 def show_movimentacoes_page():
     """Interface principal das movimentações"""
+    
+    st.title("📦 Movimentações")
 
-    st.title("📋 Sistema de Movimentações")
     user_data = st.session_state.user_data
     if not auth_manager.check_permission(user_data['perfil'], "read"):
         st.error("❌ Você não tem permissão para acessar esta página.")

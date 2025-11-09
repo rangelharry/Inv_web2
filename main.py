@@ -33,6 +33,7 @@ try:
     from modules.relatorios import show_relatorios_page
     from modules.usuarios import show_usuarios_page
     from modules.configuracoes import show_configuracoes_page
+    from modules.notifications import notificar_estoque_baixo, notificar_vencimento, notificar_vida_util
 except ImportError as e:
     st.error(f"Erro ao importar módulos: {e}")
     st.stop()
@@ -316,31 +317,24 @@ def show_dashboard():
     
     # Exibir métricas principais
     col1, col2, col3, col4 = st.columns(4)
-    
     with col1:
         st.metric("📦 Insumos", f"{insumos_count:,}", help="Total de insumos ativos")
-    
     with col2:
         st.metric("⚡ Equip. Elétricos", f"{eq_eletricos_count:,}", help="Total de equipamentos elétricos ativos")
-    
     with col3:
         st.metric("🔧 Equip. Manuais", f"{eq_manuais_count:,}", help="Total de equipamentos manuais ativos")
-    
     with col4:
         st.metric("🏢 Obras Ativas", f"{obras_count:,}", help="Total de obras/departamentos ativos")
-    
+
     # Segunda linha de métricas - Valores
     col1, col2, col3 = st.columns(3)
-    
     with col1:
         st.metric("💰 Valor Insumos", f"R$ {valor_insumos:,.2f}", help="Valor total do estoque de insumos")
-    
     with col2:
         st.metric("💰 Valor Eq. Elétricos", f"R$ {valor_eq_eletricos:,.2f}", help="Valor total dos equipamentos elétricos")
-    
     with col3:
         st.metric("💰 Valor Eq. Manuais", f"R$ {valor_eq_manuais:,.2f}", help="Valor total dos equipamentos manuais")
-    
+
     # Valor total geral com variação
     valor_total: float = valor_insumos + valor_eq_eletricos + valor_eq_manuais
     st.metric(
@@ -348,16 +342,30 @@ def show_dashboard():
         f"R$ {valor_total:,.2f}", 
         help="Valor total de todo o inventário"
     )
-    
-    # Alertas e indicadores
-    if alertas_insumos > 0:
-        st.error(f"🚨 **ATENÇÃO:** {alertas_insumos} insumo(s) com estoque baixo!")
-    else:
-        st.success("✅ Todos os insumos estão com estoque adequado")
-    
+
+    # Notificações operacionais (estoque baixo, vencimento, vida útil)
+    # Buscar dados detalhados dos insumos e equipamentos para notificação
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        # Insumos
+        cursor.execute("SELECT nome, quantidade_atual as quantidade, quantidade_minima, data_vencimento FROM insumos WHERE ativo = TRUE")
+        insumos = cursor.fetchall()
+        notificar_estoque_baixo(insumos, limite=5)
+        notificar_vencimento(insumos, dias_aviso=30)
+        # Equipamentos Elétricos
+        cursor.execute("SELECT nome, data_aquisicao, vida_util_anos FROM equipamentos_eletricos WHERE ativo = TRUE")
+        eq_eletricos = cursor.fetchall()
+        notificar_vida_util(eq_eletricos, percentual_aviso=0.9)
+        # Equipamentos Manuais
+        cursor.execute("SELECT nome, data_aquisicao, vida_util_anos FROM equipamentos_manuais WHERE ativo = TRUE")
+        eq_manuais = cursor.fetchall()
+        notificar_vida_util(eq_manuais, percentual_aviso=0.9)
+    except Exception as e:
+        st.warning(f"Não foi possível exibir notificações operacionais: {e}")
+
     # Atividade recente
     st.subheader("📈 Atividade Recente")
-    
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("📊 Hoje", f"{mov_hoje}", help="Movimentações realizadas hoje")
@@ -399,7 +407,22 @@ def show_sidebar():
                 "Relatórios",
                 "Logs de Auditoria",
                 "Usuários",
-                "Configurações"
+                "Configurações",
+                "QR/Códigos de Barras",
+                "Reservas",
+                "Manutenção Preventiva",
+                "Dashboard Executivo",
+                "Localização",
+                "Gestão Financeira",
+                "Análise Preditiva",
+                "Gestão de Subcontratados",
+                "Relatórios Customizáveis",
+                "Métricas Performance",
+                "Backup e Recovery",
+                "LGPD/Compliance",
+                "Orçamentos e Cotações",
+                "Sistema de Faturamento",
+                "Integração ERP/SAP"
             ],
             icons=[
                 "speedometer2",
@@ -412,7 +435,21 @@ def show_sidebar():
                 "graph-up",
                 "journal-text",
                 "person-gear",
-                "gear"
+                "gear",
+                "qr-code",
+                "calendar-check",
+                "wrench-adjustable",
+                "bar-chart",
+                "geo-alt",
+                "calculator",
+                "robot",
+                "file-earmark-text",
+                "speedometer",
+                "shield-check",
+                "shield-lock",
+                "currency-exchange",
+                "receipt",
+                "diagram-3"
             ],
             menu_icon="boxes",
             default_index=0,
@@ -483,6 +520,51 @@ def main():
         show_usuarios_page()
     elif selected_page == "Configurações":
         show_configuracoes_page()
+    elif selected_page == "QR/Códigos de Barras":
+        from modules.barcode_utils import show_barcode_page
+        show_barcode_page()
+    elif selected_page == "Reservas":
+        from modules.reservas import show_reservas_page
+        show_reservas_page()
+    elif selected_page == "Manutenção Preventiva":
+        from modules.manutencao_preventiva import show_manutencao_page
+        show_manutencao_page()
+    elif selected_page == "Dashboard Executivo":
+        from modules.dashboard_executivo import show_dashboard_executivo_page
+        show_dashboard_executivo_page()
+    elif selected_page == "Localização":
+        from modules.controle_localizacao import show_localizacao_page
+        show_localizacao_page()
+    elif selected_page == "Gestão Financeira":
+        from modules.gestao_financeira import show_gestao_financeira_page
+        show_gestao_financeira_page()
+    elif selected_page == "Análise Preditiva":
+        from modules.analise_preditiva import show_analise_preditiva_page
+        show_analise_preditiva_page()
+    elif selected_page == "Gestão de Subcontratados":
+        from modules.gestao_subcontratados import show_subcontratados_page
+        show_subcontratados_page()
+    elif selected_page == "Relatórios Customizáveis":
+        from modules.relatorios_customizaveis import show_relatorios_customizaveis_page
+        show_relatorios_customizaveis_page()
+    elif selected_page == "Métricas Performance":
+        from modules.metricas_performance import show_metricas_performance_page
+        show_metricas_performance_page()
+    elif selected_page == "Backup e Recovery":
+        from modules.backup_recovery import show_backup_recovery_page
+        show_backup_recovery_page()
+    elif selected_page == "LGPD/Compliance":
+        from modules.lgpd_compliance import show_lgpd_compliance_page
+        show_lgpd_compliance_page()
+    elif selected_page == "Orçamentos e Cotações":
+        from modules.orcamentos_cotacoes import show_orcamentos_cotacoes_page
+        show_orcamentos_cotacoes_page()
+    elif selected_page == "Sistema de Faturamento":
+        from modules.sistema_faturamento import show_faturamento_page
+        show_faturamento_page()
+    elif selected_page == "Integração ERP/SAP":
+        from modules.integracao_erp import show_erp_integration_page
+        show_erp_integration_page()
 
 if __name__ == "__main__":
     main()

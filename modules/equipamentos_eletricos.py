@@ -219,6 +219,131 @@ class EquipamentosEletricosManager:
         except:
             return {'total': 0, 'disponiveis': 0, 'manutencao': 0, 'valor_total': 0}
 
+    # Métodos de compatibilidade com nomes em português
+    def criar_equipamento(self, dados: dict[str, Any], user_id: int) -> tuple[bool, str]:
+        """Alias para create_equipamento - compatibilidade"""
+        result = self.create_equipamento(dados)
+        if result:
+            return True, "Equipamento criado com sucesso!"
+        return False, "Erro ao criar equipamento"
+    
+    def buscar_equipamentos(self, filtros: dict[str, Any] | None = None) -> pd.DataFrame:
+        """Alias para get_equipamentos - compatibilidade"""
+        return self.get_equipamentos(filtros)
+    
+    def atualizar_equipamento(self, equipamento_id: int, dados: dict[str, Any], user_id: int) -> tuple[bool, str]:
+        """Alias para update_equipamento - compatibilidade"""
+        success = self.update_equipamento(equipamento_id, dados)
+        if success:
+            return True, "Equipamento atualizado com sucesso!"
+        return False, "Erro ao atualizar equipamento"
+    
+    def get_equipamentos_por_obra(self, obra_id: int) -> list[dict[str, Any]]:
+        """Busca equipamentos por obra"""
+        try:
+            df = self.get_equipamentos({'obra_id': obra_id})
+            return df.to_dict('records') if not df.empty else []
+        except:
+            return []
+    
+    def get_equipamentos_por_responsavel(self, responsavel_id: int) -> list[dict[str, Any]]:
+        """Busca equipamentos por responsável"""
+        try:
+            df = self.get_equipamentos({'responsavel_id': responsavel_id})
+            return df.to_dict('records') if not df.empty else []
+        except:
+            return []
+    
+    def calcular_vida_util_restante(self, data_aquisicao: str, vida_util_anos: int) -> int:
+        """Calcula anos restantes de vida útil"""
+        try:
+            from datetime import datetime
+            if isinstance(data_aquisicao, str):
+                aquisicao = datetime.strptime(data_aquisicao, '%Y-%m-%d')
+            else:
+                aquisicao = data_aquisicao
+            
+            anos_uso = (datetime.now() - aquisicao).days / 365.25
+            restante = vida_util_anos - anos_uso
+            return max(0, int(restante))
+        except:
+            return 0
+    
+    def get_equipamentos_proximos_fim_vida_util(self, anos_limite: int = 2) -> list[dict[str, Any]]:
+        """Busca equipamentos próximos ao fim da vida útil"""
+        try:
+            df = self.get_equipamentos()
+            if df.empty:
+                return []
+            
+            proximos = []
+            for _, eq in df.iterrows():
+                vida_restante = self.calcular_vida_util_restante(
+                    eq.get('data_aquisicao', '2020-01-01'), 
+                    eq.get('vida_util_anos', 10)
+                )
+                if vida_restante <= anos_limite:
+                    proximos.append(eq.to_dict())
+            
+            return proximos
+        except:
+            return []
+    
+    def transferir_equipamento(self, equipamento_id: int, nova_obra_id: int, novo_responsavel_id: int, user_id: int) -> tuple[bool, str]:
+        """Transfere equipamento para nova obra/responsável"""
+        try:
+            dados = {
+                'obra_id': nova_obra_id,
+                'responsavel_id': novo_responsavel_id
+            }
+            success = self.update_equipamento(equipamento_id, dados)
+            if success:
+                return True, "Transferência realizada com sucesso!"
+            return False, "Erro na transferência"
+        except Exception as e:
+            return False, f"Erro na transferência: {e}"
+    
+    def get_relatorio_utilizacao(self) -> dict[str, Any]:
+        """Relatório de utilização dos equipamentos"""
+        try:
+            df = self.get_equipamentos()
+            if df.empty:
+                return {'total': 0, 'utilizacao': {}}
+            
+            utilizacao = df.groupby('status').size().to_dict()
+            return {
+                'total': len(df),
+                'utilizacao': utilizacao
+            }
+        except:
+            return {'total': 0, 'utilizacao': {}}
+    
+    def pode_usar_equipamento(self, estado: str) -> bool:
+        """Valida se equipamento pode ser usado baseado no estado"""
+        estados_validos = ['novo', 'bom', 'usado']
+        return estado.lower() in estados_validos
+    
+    def calcular_valor_depreciado(self, valor_original: float, data_aquisicao: str, vida_util_anos: int) -> float:
+        """Calcula valor depreciado do equipamento"""
+        try:
+            from datetime import datetime
+            anos_uso = (datetime.now().year - int(data_aquisicao[:4]))
+            depreciacao_anual = valor_original / vida_util_anos
+            valor_depreciado = valor_original - (depreciacao_anual * anos_uso)
+            return max(0, valor_depreciado)
+        except:
+            return 0.0
+    
+    def buscar_por_codigo(self, codigo: str) -> dict[str, Any] | None:
+        """Busca equipamento por código"""
+        try:
+            df = self.get_equipamentos({'codigo': codigo})
+            if not df.empty:
+                return df.iloc[0].to_dict()
+            return None
+        except:
+            return None
+
 def show_equipamentos_eletricos_page():
     """Interface principal dos equipamentos elétricos"""
     

@@ -91,9 +91,9 @@ class UsuariosManager:
                     params.append(filters['perfil'])  # type: ignore
                 
                 if filters.get('status') and filters['status'] != 'Todos':  # type: ignore
-                    ativo = TRUE if filters['status'] == 'Ativo' else FALSE  # type: ignore
+                    ativo_value = True if filters['status'] == 'Ativo' else False  # type: ignore
                     query += " AND ativo = %s"  # type: ignore
-                    params.append(ativo)  # type: ignore
+                    params.append(ativo_value)  # type: ignore
             
             query += " ORDER BY nome"  # type: ignore
             
@@ -238,28 +238,29 @@ class UsuariosManager:
             cursor = self.db.get_connection().cursor()  # type: ignore
             
             # Total de usuários
-            cursor.execute("SELECT COUNT(*) FROM usuarios WHERE ativo = TRUE")
+            cursor.execute("SELECT COUNT(*) as count FROM usuarios WHERE ativo = TRUE")
             result = cursor.fetchone()
-            total = result['count'] if result else 0
+            total = result[0] if result else 0
             
             # Usuários por perfil
             cursor.execute("""
-                SELECT perfil, COUNT(*) 
+                SELECT perfil, COUNT(*) as count
                 FROM usuarios 
                 WHERE ativo = TRUE 
                 GROUP BY perfil
             """)
-            perfis = dict(cursor.fetchall())
+            results = cursor.fetchall()
+            perfis = {row[0]: row[1] for row in results}
             
             # Logins recentes (último mês)
             cursor.execute("""
-                SELECT COUNT(*) 
+                SELECT COUNT(*) as count
                 FROM usuarios 
-                WHERE ultimo_login >= datetime('now', '-30 days')
+                WHERE ultimo_login >= NOW() - INTERVAL '30 days'
                 AND ativo = TRUE
             """)
             result = cursor.fetchone()
-            logins_mes = result['count'] if result else 0
+            logins_mes = result[0] if result else 0
             
             return {
                 'total': total,
@@ -335,7 +336,7 @@ def show_usuarios_page():
             cols[6].write("**Ações**")
             
             # Linhas da tabela
-            for _, row in df.iterrows():  # type: ignore # noqa: F841
+            for idx, row in df.iterrows():  # type: ignore # noqa: F841
                 cols = st.columns([3, 3, 1.5, 1.5, 2, 2, 1.5])  # type: ignore
                 cols[0].write(row['nome'])  # type: ignore
                 cols[1].write(row['email'])  # type: ignore
@@ -352,7 +353,7 @@ def show_usuarios_page():
                 
                 # Botões de ação
                 if auth_manager.check_permission(user_data['perfil'], "update"):
-                    if cols[6].button("✏️", key=f"edit_{row['id']}", help="Editar usuário"):
+                    if cols[6].button("✏️", key=f"edit_user_{row['id']}_{idx}", help="Editar usuário"):
                         st.session_state.editing_user = row['id']
                         st.rerun()
             

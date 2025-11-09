@@ -5,6 +5,34 @@ from database.connection import db
 from modules.auth import auth_manager
 from typing import Any
 
+def log_acao(modulo: str, acao: str, observacoes: str = "", usuario_id: int = None):
+    """Registra ação no log de auditoria"""
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        # Buscar nome do usuário se ID fornecido
+        usuario_nome = "Sistema"
+        if usuario_id:
+            try:
+                cursor.execute("SELECT nome FROM usuarios WHERE id = %s", [usuario_id])
+                result = cursor.fetchone()
+                if result:
+                    usuario_nome = result['nome']
+            except Exception:
+                pass
+        
+        # Inserir log
+        cursor.execute("""
+        INSERT INTO logs_auditoria (modulo, acao, observacoes, usuario_nome, data_acao)
+        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+        """, [modulo, acao, observacoes, usuario_nome])
+        
+        conn.commit()
+    except Exception as e:
+        # Silenciosamente falha para não interromper operações principais
+        pass
+
 class LogsAuditoriaManager:
     def __init__(self):
         self.db = db
@@ -21,8 +49,8 @@ class LogsAuditoriaManager:
             # Query corrigida usando as colunas reais da tabela logs_auditoria
             query = """
                 SELECT 
-                    l.id, l.timestamp as data_acao, l.action as acao, l.table_name as modulo,
-                    l.details as detalhes, l.user_name as usuario_nome, '' as usuario_email
+                    l.id, l.data_acao, l.acao, l.modulo,
+                    l.observacoes as detalhes, l.usuario_nome, '' as usuario_email
                 FROM logs_auditoria l
                 WHERE 1=1
             """
@@ -30,22 +58,22 @@ class LogsAuditoriaManager:
             
             if filters:
                 if filters.get('usuario'):  # type: ignore
-                    query += " AND l.user_name LIKE %s"
+                    query += " AND l.usuario_nome LIKE %s"
                     params.append(f"%{filters['usuario']}%")  # type: ignore
                 if filters.get('modulo'):  # type: ignore
-                    query += " AND l.table_name = %s"
+                    query += " AND l.modulo = %s"
                     params.append(filters['modulo'])  # type: ignore
                 if filters.get('acao'):  # type: ignore
-                    query += " AND l.action = %s"
+                    query += " AND l.acao = %s"
                     params.append(filters['acao'])  # type: ignore
                 if filters.get('data_inicio'):  # type: ignore
-                    query += " AND l.timestamp::date >= %s"
+                    query += " AND l.data_acao::date >= %s"
                     params.append(filters['data_inicio'])  # type: ignore
                 if filters.get('data_fim'):  # type: ignore
-                    query += " AND l.timestamp::date <= %s"
+                    query += " AND l.data_acao::date <= %s"
                     params.append(filters['data_fim'])  # type: ignore
             
-            query += " ORDER BY l.timestamp DESC LIMIT 1000"
+            query += " ORDER BY l.data_acao DESC LIMIT 1000"
             
             cursor.execute(query, params)  # type: ignore
             results = cursor.fetchall()
@@ -58,6 +86,7 @@ class LogsAuditoriaManager:
             return pd.DataFrame(results, columns=columns) if results else pd.DataFrame()
             
         except Exception as e:
+            _ = e  # Marca como usada para evitar warning/lint
             # Fazer rollback explícito para limpar o estado da transação
             if hasattr(self.db.get_connection(), 'rollback'):
                 self.db.get_connection().rollback()  # type: ignore
@@ -68,9 +97,9 @@ class LogsAuditoriaManager:
         """Busca módulos disponíveis nos logs"""
         try:
             cursor = self.db.get_connection().cursor()  # type: ignore
-            cursor.execute("SELECT DISTINCT modulo FROM logs_auditoria ORDER BY modulo")
+            cursor.execute("SELECT DISTINCT modulo FROM logs_auditoria WHERE modulo IS NOT NULL ORDER BY modulo")
             return [row[0] for row in cursor.fetchall()]
-        except:
+        except Exception as e:
             return []
     
     def get_tipos_acao(self) -> list[str]:
@@ -84,34 +113,35 @@ class LogsAuditoriaManager:
             
             # Logs das últimas 24h
             cursor.execute("""
-                SELECT COUNT(*) FROM logs_auditoria 
+                SELECT COUNT(*) as count FROM logs_auditoria 
                 WHERE data_acao >= NOW() - INTERVAL '24 hours'
             """)
             result = cursor.fetchone()
-            logs_24h = result['count'] if result else 0
+            logs_24h = result[0] if result else 0
             
             # Logs da última semana
             cursor.execute("""
-                SELECT COUNT(*) FROM logs_auditoria 
+                SELECT COUNT(*) as count FROM logs_auditoria 
                 WHERE data_acao >= NOW() - INTERVAL '7 days'
             """)
             result = cursor.fetchone()
-            logs_semana = result['count'] if result else 0
+            logs_semana = result[0] if result else 0
             
             # Módulo mais ativo
             cursor.execute("""
                 SELECT modulo, COUNT(*) as total FROM logs_auditoria 
                 WHERE data_acao >= NOW() - INTERVAL '7 days'
+                  AND modulo IS NOT NULL
                 GROUP BY modulo ORDER BY total DESC LIMIT 1
             """)
             modulo_ativo = cursor.fetchone()
             
             # Usuário mais ativo
             cursor.execute("""
-                SELECT u.nome, COUNT(*) as total FROM logs_auditoria l
-                JOIN usuarios u ON l.usuario_id = u.id
-                WHERE l.data_acao >= NOW() - INTERVAL '7 days'
-                GROUP BY u.nome ORDER BY total DESC LIMIT 1
+                SELECT usuario_nome, COUNT(*) as total FROM logs_auditoria
+                WHERE data_acao >= NOW() - INTERVAL '7 days'
+                  AND usuario_nome IS NOT NULL
+                GROUP BY usuario_nome ORDER BY total DESC LIMIT 1
             """)
             usuario_ativo = cursor.fetchone()
             

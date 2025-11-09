@@ -9,7 +9,7 @@ from datetime import datetime, date  # type: ignore
 import json  # type: ignore
 from database.connection import db
 from modules.auth import auth_manager
-from typing import Any
+from typing import Any, List, Dict, Optional
 
 class InsumosManager:
     def __init__(self):
@@ -17,33 +17,44 @@ class InsumosManager:
             self.db = db
             # Garantir que a conexão esteja limpa
             conn = self.db.get_connection()
-            if hasattr(conn, 'rollback'):
+            if conn and hasattr(conn, 'rollback'):
                 conn.rollback()
         except Exception as e:
             st.error(f"Erro ao conectar com o banco: {e}")
             raise
 
-    def get_categorias(self, tipo: str = 'insumo') -> list[dict[str, Any]]:
+    def get_categorias(self, tipo: str = 'insumo') -> List[Dict[str, Any]]:
         """Busca categorias disponíveis"""
         try:
             # Garantir que a conexão esteja limpa
             conn = self.db.get_connection()
-            if hasattr(conn, 'rollback'):
+            if conn and hasattr(conn, 'rollback'):
                 conn.rollback()
+            
+            if not conn:
+                return []
 
-            conn = self.db.get_connection()
             cursor = conn.cursor()
             cursor.execute("""
             SELECT id, nome FROM categorias 
             WHERE tipo = %s AND ativo = TRUE 
             ORDER BY nome
             """, (tipo,))
-            return [dict(zip([desc[0] for desc in cursor.description], row)) for row in cursor.fetchall()]
+            
+            # Verificação segura do cursor.description
+            if cursor.description:
+                desc_names = [desc[0] for desc in cursor.description]
+                return [dict(zip(desc_names, row)) for row in cursor.fetchall()]
+            else:
+                return []
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
-            conn = self.db.get_connection()
-            if hasattr(conn, 'rollback'):
-                conn.rollback()
+            try:
+                conn = self.db.get_connection()
+                if conn and hasattr(conn, 'rollback'):
+                    conn.rollback()
+            except:
+                pass
             st.error(f"Erro ao buscar categorias: {e}")
             return []
     
@@ -52,10 +63,12 @@ class InsumosManager:
         try:
             # Garantir que a conexão esteja limpa
             conn = self.db.get_connection()
-            if hasattr(conn, 'rollback'):
+            if conn and hasattr(conn, 'rollback'):
                 conn.rollback()
                 
-            conn = self.db.get_connection()
+            if not conn:
+                return False, "Erro de conexão com o banco"
+                
             cursor = conn.cursor()
             # Verifica se código já existe
             cursor.execute("SELECT id FROM insumos WHERE codigo = %s", (dados['codigo'],))
@@ -75,19 +88,30 @@ class InsumosManager:
             ))
             cursor.execute("SELECT id FROM insumos WHERE codigo = %s", (dados['codigo'],))
             result = cursor.fetchone()
-            insumo_id = result['id'] if result else None
-            conn.commit()
+            insumo_id: Optional[int] = None
+            if result:
+                if isinstance(result, dict):
+                    insumo_id = result.get('id')
+                elif isinstance(result, (list, tuple)) and len(result) > 0:
+                    insumo_id = result[0]
+                
+            if conn:
+                conn.commit()
             # Log da ação
-            auth_manager.log_action(
-                user_id, 'criar', 'insumos', insumo_id,
-                f"Insumo criado: {dados['codigo']} - {dados['descricao']}"
-            )
+            if insumo_id:
+                auth_manager.log_action(
+                    user_id, 'criar', 'insumos', insumo_id,
+                    f"Insumo criado: {dados['codigo']} - {dados['descricao']}"
+                )
             return True, "Insumo criado com sucesso"
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
-            conn = self.db.get_connection()
-            if hasattr(conn, 'rollback'):
-                conn.rollback()
+            try:
+                conn = self.db.get_connection()
+                if conn and hasattr(conn, 'rollback'):
+                    conn.rollback()
+            except:
+                pass
             return False, f"Erro ao criar insumo: {str(e)}"
     
     def update_insumo(self, insumo_id: int, dados: dict[str, Any], user_id: int) -> tuple[bool, str]:
@@ -160,20 +184,20 @@ class InsumosManager:
     def get_insumos(self, filtros: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Busca insumos com filtros"""
         try:
-            # Garantir que a conexão esteja limpa
             conn = self.db.get_connection()
-            if hasattr(conn, 'rollback'):
-                conn.rollback()  # type: ignore
-            
-            conn = self.db.get_connection()
+            if not conn:
+                return []
+                
             cursor = conn.cursor()
+            
             query = """
-            SELECT i.*, c.nome as categoria_nome
-            FROM insumos i
-            LEFT JOIN categorias c ON i.categoria_id = c.id
-            WHERE i.ativo = TRUE
+                SELECT i.*, c.nome as categoria_nome
+                FROM insumos i
+                LEFT JOIN categorias c ON i.categoria_id = c.id
+                WHERE i.ativo = TRUE
             """
             params: list[Any] = []
+            
             if filtros:
                 if filtros.get('categoria_id'):
                     query += " AND i.categoria_id = %s"
@@ -183,17 +207,27 @@ class InsumosManager:
                 if filtros.get('busca'):
                     query += " AND (i.codigo LIKE %s OR i.descricao LIKE %s OR i.marca LIKE %s)"
                     busca = f"%{filtros['busca']}%"
-                    params.extend([busca, busca, busca])  # type: ignore
+                    params.extend([busca, busca, busca])
+                    
             query += " ORDER BY i.codigo"
-            cursor.execute(query, params)  # type: ignore
-            results = cursor.fetchall()
-            return [dict(row) for row in results]  # Converter RealDictRow para dict normal
+            cursor.execute(query, params)
+            
+            rows = cursor.fetchall()
+            if not rows:
+                return []
+                
+            # Obter nomes das colunas
+            columns = [desc[0] for desc in cursor.description]
+            
+            # Converter para lista de dicionários
+            insumos = []
+            for row in rows:
+                insumo_dict = dict(zip(columns, row))
+                insumos.append(insumo_dict)
+                
+            return insumos
+            
         except Exception as e:
-            # Fazer rollback explícito para limpar o estado da transação
-            conn = self.db.get_connection()
-            if hasattr(conn, 'rollback'):
-                conn.rollback()  # type: ignore
-            st.error(f"Erro ao buscar insumos: {e}")
             return []
     
     def get_insumo_by_id(self, insumo_id: int) -> dict[str, Any] | None:
@@ -217,47 +251,211 @@ class InsumosManager:
         """Ajusta estoque de insumo"""
         try:
             conn = self.db.get_connection()
+            if not conn:
+                return False, "Erro de conexão com o banco"
+                
             cursor = conn.cursor()
+            
             # Busca insumo atual
             cursor.execute("SELECT * FROM insumos WHERE id = %s", (insumo_id,))
             row = cursor.fetchone()
             if not row:
                 return False, "Insumo não encontrado"
+                
             insumo = dict(zip([desc[0] for desc in cursor.description], row))
-            quantidade_atual = insumo['quantidade_atual']
+            quantidade_atual = float(insumo.get('quantidade_atual', 0))
+            
             if tipo_movimento == 'entrada':
                 nova_quantidade = quantidade_atual + quantidade
             else:  # saida
                 if quantidade_atual < quantidade:
                     return False, "Quantidade insuficiente em estoque"
                 nova_quantidade = quantidade_atual - quantidade
+                
             # Atualiza estoque
             cursor.execute("""
-            UPDATE insumos SET 
-                quantidade_atual = %s,
-                data_ultima_entrada = CASE WHEN %s = 'entrada' THEN CURRENT_TIMESTAMP ELSE data_ultima_entrada END,
-                data_ultima_saida = CASE WHEN %s = 'saida' THEN CURRENT_TIMESTAMP ELSE data_ultima_saida END
-            WHERE id = %s
+                UPDATE insumos SET 
+                    quantidade_atual = %s,
+                    data_ultima_entrada = CASE WHEN %s = 'entrada' THEN CURRENT_TIMESTAMP ELSE data_ultima_entrada END,
+                    data_ultima_saida = CASE WHEN %s = 'saida' THEN CURRENT_TIMESTAMP ELSE data_ultima_saida END
+                WHERE id = %s
             """, (nova_quantidade, tipo_movimento, tipo_movimento, insumo_id))
-            # Registra movimentação
-            cursor.execute("""
-            INSERT INTO movimentacoes (
-                tipo, tipo_item, item_id, codigo_item, descricao_item,
-                quantidade, unidade, motivo, observacoes, usuario_id
-            ) VALUES (%s, 'insumo', %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                tipo_movimento, insumo_id, insumo['codigo'], insumo['descricao'],
-                quantidade, insumo['unidade'], motivo, f"Ajuste de estoque: {motivo}", user_id
-            ))
+            
+            # Registra movimentação se a tabela existe
+            try:
+                cursor.execute("""
+                    INSERT INTO movimentacoes (
+                        tipo, tipo_item, item_id, codigo_item, descricao_item,
+                        quantidade, unidade, motivo, observacoes, usuario_id
+                    ) VALUES (%s, 'insumo', %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    tipo_movimento, insumo_id, insumo['codigo'], insumo['descricao'],
+                    quantidade, insumo.get('unidade', 'UN'), motivo, f"Ajuste de estoque: {motivo}", user_id
+                ))
+            except:
+                # Se movimentacoes não existe, continua sem registrar movimentação
+                pass
+                
             conn.commit()
+            
             # Log da ação
-            auth_manager.log_action(
-                user_id, 'editar', 'insumos', insumo_id,
-                f"Ajuste de estoque - {tipo_movimento}: {quantidade} {insumo['unidade']} - {motivo}"
-            )
-            return True, f"Estoque ajustado: {nova_quantidade} {insumo['unidade']}"
+            try:
+                auth_manager.log_action(
+                    user_id, 'editar', 'insumos', insumo_id,
+                    f"Ajuste de estoque - {tipo_movimento}: {quantidade} {insumo.get('unidade', 'UN')} - {motivo}"
+                )
+            except:
+                # Se log falha, continua sem registrar log
+                pass
+                
+            return True, f"Estoque ajustado: {nova_quantidade} {insumo.get('unidade', 'UN')}"
+            
         except Exception as e:
+            if conn:
+                try:
+                    conn.rollback()
+                except:
+                    pass
             return False, f"Erro ao ajustar estoque: {str(e)}"
+    
+    def get_dashboard_stats(self) -> dict[str, Any]:
+        """Estatísticas para dashboard"""
+        try:
+            cursor = self.db.get_connection().cursor()  # type: ignore
+            
+            # Total de insumos ativos
+            cursor.execute("SELECT COUNT(*) as count FROM insumos WHERE ativo = TRUE")
+            result = cursor.fetchone()
+            total = result[0] if result else 0
+            
+            # Insumos com estoque baixo
+            cursor.execute("""
+                SELECT COUNT(*) as count FROM insumos 
+                WHERE ativo = TRUE AND quantidade_atual <= quantidade_minima
+            """)
+            result = cursor.fetchone()
+            estoque_baixo = result[0] if result else 0
+            
+            # Valor total do estoque
+            cursor.execute("""
+                SELECT COALESCE(SUM(quantidade_atual * preco_unitario), 0) as total FROM insumos 
+                WHERE ativo = TRUE
+            """)
+            result = cursor.fetchone()
+            valor_total = float(result[0]) if result else 0.0
+            
+            # Tipos de insumos
+            cursor.execute("""
+                SELECT COUNT(DISTINCT tipo) as count FROM insumos 
+                WHERE ativo = TRUE
+            """)
+            result = cursor.fetchone()
+            tipos = result[0] if result else 0
+            
+            return {
+                'total': total,
+                'estoque_baixo': estoque_baixo,
+                'valor_total': valor_total,
+                'tipos': tipos
+            }
+        except Exception as e:
+            return {
+                'total': 0,
+                'estoque_baixo': 0,
+                'valor_total': 0.0,
+                'tipos': 0
+            }
+
+    # Métodos de compatibilidade com nomes em português
+    def criar_insumo(self, dados: dict[str, Any], user_id: int) -> tuple[bool, str]:
+        """Alias para create_insumo - compatibilidade"""
+        return self.create_insumo(dados, user_id)
+    
+    def buscar_insumos(self, filtros: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Alias para get_insumos - compatibilidade"""
+        return self.get_insumos(filtros)
+    
+    def atualizar_insumo(self, insumo_id: int, dados: dict[str, Any], user_id: int) -> tuple[bool, str]:
+        """Alias para update_insumo - compatibilidade"""
+        return self.update_insumo(insumo_id, dados, user_id)
+    
+    def deletar_insumo(self, insumo_id: int, user_id: int) -> tuple[bool, str]:
+        """Alias para delete_insumo - compatibilidade"""
+        return self.delete_insumo(insumo_id, user_id)
+    
+    def get_insumos_baixo_estoque(self) -> list[dict[str, Any]]:
+        """Busca insumos com estoque abaixo do mínimo"""
+        try:
+            conn = self.db.get_connection()
+            if not conn:
+                return []
+                
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, codigo, descricao, categoria_id, unidade, 
+                       quantidade_atual, quantidade_minima, fornecedor, 
+                       marca, localizacao, observacoes, data_validade
+                FROM insumos 
+                WHERE quantidade_atual <= quantidade_minima
+                ORDER BY descricao
+            """)
+            
+            rows = cursor.fetchall()
+            if not rows:
+                return []
+                
+            # Obter nomes das colunas
+            columns = [desc[0] for desc in cursor.description]
+            
+            insumos = []
+            for row in rows:
+                insumo_dict = dict(zip(columns, row))
+                insumos.append(insumo_dict)
+            
+            return insumos
+            
+        except Exception as e:
+            return []
+    
+    def get_insumos_vencendo(self, dias: int = 30) -> list[dict[str, Any]]:
+        """Busca insumos próximos ao vencimento"""
+        try:
+            conn = self.db.get_connection()
+            if not conn:
+                return []
+                
+            cursor = conn.cursor()
+            
+            from datetime import timedelta, datetime
+            data_limite = datetime.now() + timedelta(days=dias)
+            
+            cursor.execute("""
+                SELECT id, codigo, descricao, categoria_id, quantidade_atual, data_validade,
+                       unidade, fornecedor, marca, localizacao
+                FROM insumos 
+                WHERE data_validade IS NOT NULL 
+                AND data_validade <= %s
+                AND quantidade_atual > 0
+                ORDER BY data_validade ASC
+            """, (data_limite,))
+            
+            rows = cursor.fetchall()
+            if not rows:
+                return []
+                
+            # Obter nomes das colunas
+            columns = [desc[0] for desc in cursor.description]
+            
+            insumos = []
+            for row in rows:
+                insumo_dict = dict(zip(columns, row))
+                insumos.append(insumo_dict)
+            
+            return insumos
+            
+        except Exception as e:
+            return []
 
 # Interface Streamlit para gestão de insumos
 def show_insumos_page():

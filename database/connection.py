@@ -71,7 +71,10 @@ class DatabaseConnection:
             return self.conn
     
     def create_tables(self):
-        cursor = self.get_connection().cursor()
+        conn = self.get_connection()
+        if conn is None:
+            raise Exception("Conexão com o banco de dados não está disponível.")
+        cursor = conn.cursor()
         
         # Tabela de usuários
         cursor.execute("""
@@ -335,12 +338,16 @@ class DatabaseConnection:
         )
         """)
         
-        self.conn.commit()
+        if self.conn:
+            self.conn.commit()
         self.create_default_categories()
         print("✅ Todas as tabelas PostgreSQL foram criadas com sucesso!")
     
     def create_default_categories(self):
-        cursor = self.get_connection().cursor()
+        conn = self.get_connection()
+        if conn is None:
+            raise Exception("Conexão com o banco de dados não está disponível.")
+        cursor = conn.cursor()
         
         categorias_padrao = [
             ('Hidráulica', 'Materiais e conexões hidráulicas', 'insumo', '#0066CC'),
@@ -368,10 +375,14 @@ class DatabaseConnection:
             except Exception as e:
                 print(f"Erro ao criar categoria {nome}: {e}")
         
-        self.conn.commit()
+        if self.conn:
+            self.conn.commit()
     
     def create_default_user(self):
-        cursor = self.get_connection().cursor()
+        conn = self.get_connection()
+        if conn is None:
+            raise Exception("Conexão com o banco de dados não está disponível.")
+        cursor = conn.cursor()
         
         # Verifica se já existe usuário admin
         cursor.execute("SELECT id FROM usuarios WHERE email = %s", ('admin@inventario.com',))
@@ -387,7 +398,8 @@ class DatabaseConnection:
         VALUES (%s, %s, %s, %s, %s)
         """, ('Administrador', 'admin@inventario.com', password_hash, 'admin', True))
         
-        self.conn.commit()
+        if self.conn:
+            self.conn.commit()
         print("✅ Usuário administrador padrão criado!")
         print("   Email: admin@inventario.com")
         print("   Senha: admin123")

@@ -1,0 +1,34 @@
+# Configuração de testes para o Sistema de Inventário Web
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-v -ra -s --tb=short --cov=modules --cov-report=html --cov-report=term-missing --cov-report=xml"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.coverage.run]
+source = ["modules", "database", "."]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/.venv/*",
+    "setup.py",
+    "test_*.py",
+    "*_test.py"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:"
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
