@@ -271,7 +271,7 @@ class FaturamentoManager:
         
         # Verificar se já existem clientes
         cursor.execute("SELECT COUNT(*) FROM clientes_faturamento")
-        if cursor.fetchone()[0] > 0:
+        if get_count_result(cursor.fetchone()) > 0:
             return
         
         # Inserir clientes exemplo
@@ -371,7 +371,7 @@ class FaturamentoManager:
             dados.get('regime_tributario', ''), dados.get('observacoes', '')
         ])
         
-        cliente_id = cursor.fetchone()[0]
+        cliente_id = get_count_result(cursor.fetchone())
         conn.commit()
         
         log_acao("faturamento", "criar_cliente", f"Cliente criado: {dados['nome_fantasia']}")
@@ -396,7 +396,7 @@ class FaturamentoManager:
             dados.get('observacoes', '')
         ])
         
-        produto_id = cursor.fetchone()[0]
+        produto_id = get_count_result(cursor.fetchone())
         conn.commit()
         
         log_acao("faturamento", "criar_produto", f"Produto/Serviço criado: {dados['descricao']}")
@@ -408,7 +408,7 @@ class FaturamentoManager:
         cursor = conn.cursor()
         
         cursor.execute("SELECT MAX(numero_nf) FROM notas_fiscais")
-        ultimo_numero = cursor.fetchone()[0]
+        ultimo_numero = get_count_result(cursor.fetchone())
         
         if ultimo_numero is None:
             cursor.execute("SELECT valor FROM configuracoes_fiscais WHERE chave = 'numeracao_nf_inicio'")
@@ -440,7 +440,7 @@ class FaturamentoManager:
             valor_total, dados.get('usuario_id', 1), dados.get('observacoes', '')
         ])
         
-        nota_id = cursor.fetchone()[0]
+        nota_id = get_count_result(cursor.fetchone())
         
         # Inserir itens
         for i, item in enumerate(dados.get('itens', []), 1):
@@ -475,7 +475,7 @@ class FaturamentoManager:
         cursor.execute("""
         SELECT numero_nf FROM notas_fiscais WHERE id = %s
         """, [nota_fiscal_id])
-        numero_nf = cursor.fetchone()[0]
+        numero_nf = get_count_result(cursor.fetchone())
         
         cursor.execute("""
         INSERT INTO contas_receber
@@ -541,10 +541,12 @@ class FaturamentoManager:
         
         # Buscar configurações
         cursor.execute("SELECT valor FROM configuracoes_fiscais WHERE chave = 'taxa_juros_mensal'")
-        taxa_juros = float(cursor.fetchone()[0]) / 100
+        result = cursor.fetchone()
+        taxa_juros = float(get_count_result(result)) / 100 if result else 0.0
         
         cursor.execute("SELECT valor FROM configuracoes_fiscais WHERE chave = 'percentual_multa'")
-        perc_multa = float(cursor.fetchone()[0]) / 100
+        result = cursor.fetchone()
+        perc_multa = float(get_count_result(result)) / 100 if result else 0.0
         
         # Calcular juros (proporcional aos dias)
         juros = valor_original * (taxa_juros / 30) * dias_atraso
@@ -608,12 +610,12 @@ def show_faturamento_page():
         
         with col3:
             cursor.execute("SELECT COUNT(*) FROM contas_receber WHERE status = 'pendente'")
-            contas_pendentes = cursor.fetchone()[0]
+            contas_pendentes = get_count_result(cursor.fetchone())
             st.metric("Contas Pendentes", contas_pendentes)
         
         with col4:
             cursor.execute("SELECT COUNT(*) FROM contas_receber WHERE status = 'pendente' AND data_vencimento < CURRENT_DATE")
-            contas_vencidas = cursor.fetchone()[0]
+            contas_vencidas = get_count_result(cursor.fetchone())
             st.metric("Contas Vencidas", contas_vencidas, delta_color="inverse")
         
         # Gráfico de faturamento

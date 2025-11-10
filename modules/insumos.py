@@ -126,7 +126,15 @@ class InsumosManager:
             cursor = conn.cursor()
             # Busca dados atuais
             cursor.execute("SELECT * FROM insumos WHERE id = %s", (insumo_id,))
-            old_data = dict(zip([desc[0] for desc in cursor.description], cursor.fetchone()))
+            result = cursor.fetchone()
+            if result:
+                if isinstance(result, dict):
+                    old_data = dict(result)
+                else:
+                    columns = [desc[0] for desc in cursor.description]
+                    old_data = dict(zip(columns, result))
+            else:
+                return False, "Insumo não encontrado"
             # Verifica se código já existe em outro insumo
             cursor.execute("SELECT id FROM insumos WHERE codigo = %s AND id != %s", (dados['codigo'], insumo_id))
             if cursor.fetchone():
@@ -169,7 +177,12 @@ class InsumosManager:
             row = cursor.fetchone()
             if not row:
                 return False, "Insumo não encontrado"
-            insumo_data = dict(zip([desc[0] for desc in cursor.description], row))
+                
+            if isinstance(row, dict):
+                insumo_data = dict(row)
+            else:
+                columns = [desc[0] for desc in cursor.description]
+                insumo_data = dict(zip(columns, row))
             cursor.execute("UPDATE insumos SET ativo = FALSE WHERE id = %s", (insumo_id,))
             conn.commit()
             # Log da ação
@@ -216,14 +229,17 @@ class InsumosManager:
             if not rows:
                 return []
                 
-            # Obter nomes das colunas
-            columns = [desc[0] for desc in cursor.description]
-            
-            # Converter para lista de dicionários
+            # Converter resultados de forma robusta
             insumos = []
             for row in rows:
-                insumo_dict = dict(zip(columns, row))
-                insumos.append(insumo_dict)
+                if isinstance(row, dict):
+                    # Se já é um dict (RealDictRow), usar diretamente
+                    insumos.append(dict(row))
+                else:
+                    # Se é tuple, converter para dict usando description
+                    columns = [desc[0] for desc in cursor.description]
+                    insumo_dict = dict(zip(columns, row))
+                    insumos.append(insumo_dict)
                 
             return insumos
             
@@ -242,7 +258,13 @@ class InsumosManager:
             WHERE i.id = %s
             """, (insumo_id,))
             result = cursor.fetchone()
-            return dict(zip([desc[0] for desc in cursor.description], result)) if result else None
+            if result:
+                if isinstance(result, dict):
+                    return dict(result)
+                else:
+                    columns = [desc[0] for desc in cursor.description]
+                    return dict(zip(columns, result))
+            return None
         except Exception as e:
             st.error(f"Erro ao buscar insumo: {e}")
             return None
@@ -262,7 +284,11 @@ class InsumosManager:
             if not row:
                 return False, "Insumo não encontrado"
                 
-            insumo = dict(zip([desc[0] for desc in cursor.description], row))
+            if isinstance(row, dict):
+                insumo = dict(row)
+            else:
+                columns = [desc[0] for desc in cursor.description]
+                insumo = dict(zip(columns, row))
             quantidade_atual = float(insumo.get('quantidade_atual', 0))
             
             if tipo_movimento == 'entrada':
@@ -405,13 +431,15 @@ class InsumosManager:
             if not rows:
                 return []
                 
-            # Obter nomes das colunas
-            columns = [desc[0] for desc in cursor.description]
-            
+            # Converter resultados de forma robusta
             insumos = []
             for row in rows:
-                insumo_dict = dict(zip(columns, row))
-                insumos.append(insumo_dict)
+                if isinstance(row, dict):
+                    insumos.append(dict(row))
+                else:
+                    columns = [desc[0] for desc in cursor.description]
+                    insumo_dict = dict(zip(columns, row))
+                    insumos.append(insumo_dict)
             
             return insumos
             
@@ -444,13 +472,15 @@ class InsumosManager:
             if not rows:
                 return []
                 
-            # Obter nomes das colunas
-            columns = [desc[0] for desc in cursor.description]
-            
+            # Converter resultados de forma robusta  
             insumos = []
             for row in rows:
-                insumo_dict = dict(zip(columns, row))
-                insumos.append(insumo_dict)
+                if isinstance(row, dict):
+                    insumos.append(dict(row))
+                else:
+                    columns = [desc[0] for desc in cursor.description]
+                    insumo_dict = dict(zip(columns, row))
+                    insumos.append(insumo_dict)
             
             return insumos
             

@@ -8,6 +8,28 @@ import plotly.graph_objects as go  # type: ignore # noqa: F401
 from io import BytesIO  # type: ignore
 from typing import Any  # type: ignore # noqa: F401
 
+def get_count_result(cursor_result):
+    """Helper para tratar resultados do PostgreSQL que podem ser dict ou tuple"""
+    if cursor_result is None:
+        return 0
+    if isinstance(cursor_result, dict):
+        return list(cursor_result.values())[0] if cursor_result.values() else 0
+    elif isinstance(cursor_result, (tuple, list)):
+        return cursor_result[0] if cursor_result else 0
+    else:
+        return cursor_result
+
+def convert_rows_to_dicts(cursor, rows):
+    """Converte resultados do cursor para lista de dicionários"""
+    result = []
+    for row in rows:
+        if isinstance(row, dict):
+            result.append(row)
+        else:
+            columns = [desc[0] for desc in cursor.description]
+            result.append(dict(zip(columns, row)))
+    return result
+
 class RelatoriosManager:
     def __init__(self):
         self.db = db
@@ -15,14 +37,15 @@ class RelatoriosManager:
     def gerar_relatorio_inventario_completo(self) -> pd.DataFrame:  # type: ignore
         """Gera relatório completo do inventário"""
         try:
-            cursor = self.db.get_connection().cursor()  # type: ignore
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
             
             query = """
                 SELECT 
                     descricao as item, codigo as codigo_patrimonial, 'Insumo' as tipo_item,
-                    'Insumo' as categoria, 0 as quantidade_atual, 0 as quantidade_minima,
+                    'Insumo' as categoria, quantidade_atual, quantidade_minima,
                     preco_unitario as valor_unitario, 
-                    0 as valor_total,
+                    (quantidade_atual * preco_unitario) as valor_total,
                     localizacao, CASE WHEN ativo = TRUE THEN 'Ativo' ELSE 'Inativo' END as status,
                     unidade as unidade_medida
                 FROM insumos
@@ -47,16 +70,14 @@ class RelatoriosManager:
                 ORDER BY tipo_item, item
             """
             
-            cursor.execute(query)  # type: ignore
-            results = cursor.fetchall()  # type: ignore
+            cursor.execute(query)
+            rows = cursor.fetchall()
             
-            columns = [
-                'item', 'codigo_patrimonial', 'tipo_item', 'categoria',
-                'quantidade_atual', 'quantidade_minima', 'valor_unitario',
-                'valor_total', 'localizacao', 'status', 'unidade_medida'
-            ]
+            # Converter resultados para dicionários
+            results_dict = convert_rows_to_dicts(cursor, rows)
             
-            return pd.DataFrame(results, columns=columns)  # type: ignore
+            
+            return pd.DataFrame(results_dict)  # type: ignore
             
         except Exception as e:
             st.error(f"Erro ao gerar relatório: {e}")  # type: ignore
@@ -65,7 +86,27 @@ class RelatoriosManager:
     def gerar_relatorio_movimentacoes(self, data_inicio: str, data_fim: str) -> pd.DataFrame:  # type: ignore
         """Gera relatório de movimentações por período"""
         try:
-            cursor = self.db.get_connection().cursor()  # type: ignore
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            # Verificar se tabela de movimentações existe
+            cursor.execute("""
+                SELECT table_name FROM information_schema.tables 
+                WHERE table_schema = 'public' AND table_name = 'movimentacoes'
+            """)
+            
+            if not cursor.fetchone():
+                st.info("📋 Tabela de movimentações não encontrada. Criando estrutura básica...")
+                return pd.DataFrame({
+                    'data_movimentacao': [],
+                    'tipo': [],
+                    'quantidade': [],
+                    'motivo': [],
+                    'origem': [],
+                    'destino': [],
+                    'descricao_item': [],
+                    'codigo_item': []
+                })
             
             query = """
                 SELECT 
@@ -79,16 +120,13 @@ class RelatoriosManager:
                 ORDER BY m.data_movimentacao DESC
             """
             
-            cursor.execute(query, (data_inicio, data_fim))  # type: ignore
-            results = cursor.fetchall()  # type: ignore
+            cursor.execute(query, (data_inicio, data_fim))
+            rows = cursor.fetchall()
             
-            columns = [
-                'data_movimentacao', 'tipo', 'quantidade',
-                'motivo', 'origem', 'destino',
-                'descricao_item', 'codigo_item', 'usuario_nome'
-            ]
+            # Converter resultados para dicionários
+            results_dict = convert_rows_to_dicts(cursor, rows)
             
-            return pd.DataFrame(results, columns=columns)  # type: ignore
+            return pd.DataFrame(results_dict)  # type: ignore
             
         except Exception as e:
             st.error(f"Erro ao gerar relatório de movimentações: {e}")  # type: ignore
@@ -97,13 +135,14 @@ class RelatoriosManager:
     def gerar_relatorio_estoque_baixo(self) -> pd.DataFrame:  # type: ignore
         """Gera relatório de itens com estoque baixo"""
         try:
-            cursor = self.db.get_connection().cursor()  # type: ignore
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
             
             query = """
                 SELECT 
                     i.descricao as item, 
                     i.codigo as codigo_patrimonial, 
-                    COALESCE(c.nome, 'Sem categoria') as categoria, 
+                    'Insumo' as categoria,
                     'Insumo' as tipo_item,
                     i.quantidade_atual, 
                     i.quantidade_minima, 
@@ -111,17 +150,18 @@ class RelatoriosManager:
                     COALESCE(i.preco_unitario, 0) as valor_unitario, 
                     COALESCE(i.localizacao, 'N/A') as localizacao
                 FROM insumos i
-                LEFT JOIN categorias c ON i.categoria_id = c.id
                 WHERE i.ativo = TRUE 
                 AND (i.quantidade_atual <= i.quantidade_minima OR i.quantidade_atual = 0)
                 ORDER BY deficit DESC, i.quantidade_atual ASC
             """
             
-            cursor.execute(query)  # type: ignore
-            results = cursor.fetchall()  # type: ignore
+            cursor.execute(query)
+            rows = cursor.fetchall()
             
-            # Converter RealDictRow para dict normal
-            return pd.DataFrame([dict(row) for row in results])  # type: ignore
+            # Converter resultados para dicionários
+            results_dict = convert_rows_to_dicts(cursor, rows)
+            
+            return pd.DataFrame(results_dict)  # type: ignore
             
         except Exception as e:
             st.error(f"Erro ao gerar relatório de estoque baixo: {e}")  # type: ignore
