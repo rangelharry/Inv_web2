@@ -427,6 +427,36 @@ class SubcontratadosManager:
             st.error(f"❌ Erro ao cadastrar subcontratado: {e}")
             return False
     
+    def cadastrar_subcontratado(self, dados: Dict[str, Any]) -> bool:
+        """Cadastra novo subcontratado"""
+        try:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+            INSERT INTO subcontratados 
+            (razao_social, nome_fantasia, cnpj, email_principal, telefone_principal,
+             endereco, cidade, estado, cep, observacoes, especialidades, ativo)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+            RETURNING id
+            """, [
+                dados['razao_social'], dados['nome_fantasia'], dados['cnpj'],
+                dados['email_principal'], dados['telefone_principal'],
+                dados['endereco'], dados['cidade'], dados['estado'],
+                dados['cep'], dados['observacoes'], 
+                json.dumps(dados['especialidades']) if dados['especialidades'] else '[]'
+            ])
+            
+            subcontratado_id = cursor.fetchone()[0] if cursor.description else cursor.fetchone()
+            conn.commit()
+            
+            log_acao("subcontratados", "cadastro", f"Subcontratado {dados['razao_social']} cadastrado")
+            return True
+            
+        except Exception as e:
+            st.error(f"❌ Erro ao cadastrar subcontratado: {e}")
+            return False
+
     def criar_contrato(self, dados: Dict[str, Any]) -> bool:
         """Cria novo contrato com subcontratado"""
         try:

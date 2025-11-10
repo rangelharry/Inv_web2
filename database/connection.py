@@ -41,9 +41,9 @@ class DatabaseConnection:
                 keepalives_count=3
             )
             self.conn.autocommit = False
-            print("✅ Conexão com PostgreSQL estabelecida!")
+            print("OK - Conexão com PostgreSQL estabelecida!")
         except Exception as e:
-            print(f"❌ Erro ao conectar com PostgreSQL: {e}")
+            print(f"ERRO - Erro ao conectar com PostgreSQL: {e}")
             raise
     
     def get_connection(self):
@@ -51,7 +51,7 @@ class DatabaseConnection:
         try:
             # Verifica se a conexão está ativa
             if not self.conn or self.conn.closed:
-                print("🔄 Reconectando ao PostgreSQL...")
+                print("RECONECTANDO - PostgreSQL...")
                 self.create_connection()
             else:
                 # Fazer rollback de qualquer transação abortada antes de testar
@@ -66,7 +66,7 @@ class DatabaseConnection:
                 cursor.fetchone()
             return self.conn
         except (psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.errors.InFailedSqlTransaction) as e:
-            print(f"🔄 Conexão perdida, reconectando: {e}")
+            print(f"RECONECTANDO - Conexão perdida: {e}")
             self.create_connection()
             return self.conn
     
@@ -341,7 +341,7 @@ class DatabaseConnection:
         if self.conn:
             self.conn.commit()
         self.create_default_categories()
-        print("✅ Todas as tabelas PostgreSQL foram criadas com sucesso!")
+        print("OK - Todas as tabelas PostgreSQL foram criadas com sucesso!")
     
     def create_default_categories(self):
         conn = self.get_connection()
@@ -373,7 +373,7 @@ class DatabaseConnection:
                 ON CONFLICT (nome) DO NOTHING
                 """, (nome, descricao, tipo, cor))
             except Exception as e:
-                print(f"Erro ao criar categoria {nome}: {e}")
+                print(f"ERRO - Erro ao criar categoria {nome}: {e}")
         
         if self.conn:
             self.conn.commit()
@@ -400,7 +400,7 @@ class DatabaseConnection:
         
         if self.conn:
             self.conn.commit()
-        print("✅ Usuário administrador padrão criado!")
+        print("OK - Usuário administrador padrão criado!")
         print("   Email: admin@inventario.com")
         print("   Senha: admin123")
     

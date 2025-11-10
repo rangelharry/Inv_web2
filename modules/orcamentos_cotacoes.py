@@ -12,6 +12,17 @@ from typing import Dict, List, Any
 import plotly.express as px
 import plotly.graph_objects as go
 
+def get_count_result(cursor_result):
+    """Helper para extrair count/valor do resultado do cursor PostgreSQL"""
+    if not cursor_result:
+        return 0
+    if isinstance(cursor_result, dict):
+        return cursor_result.get('count', cursor_result.get('id', 0))
+    elif isinstance(cursor_result, (list, tuple)):
+        return cursor_result[0] if cursor_result else 0
+    else:
+        return cursor_result
+
 class OrcamentosManager:
     def __init__(self):
         self.criar_tabelas()
@@ -381,22 +392,26 @@ def show_orcamentos_cotacoes_page():
         
         with col1:
             cursor.execute("SELECT COUNT(*) FROM solicitacoes_cotacao")
-            total_solicitacoes = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            total_solicitacoes = result['count'] if isinstance(result, dict) else (result[0] if result else 0)
             st.metric("Total Solicitações", total_solicitacoes)
         
         with col2:
             cursor.execute("SELECT COUNT(*) FROM solicitacoes_cotacao WHERE status = 'aberta'")
-            abertas = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            abertas = result['count'] if isinstance(result, dict) else (result[0] if result else 0)
             st.metric("Cotações Abertas", abertas)
         
         with col3:
             cursor.execute("SELECT COUNT(*) FROM cotacoes_recebidas WHERE status = 'ativa'")
-            recebidas = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            recebidas = get_count_result(result)
             st.metric("Cotações Recebidas", recebidas)
         
         with col4:
             cursor.execute("SELECT COUNT(*) FROM fornecedores WHERE ativo = TRUE")
-            fornecedores = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            fornecedores = get_count_result(result)
             st.metric("Fornecedores Ativos", fornecedores)
         
         # Gráfico de cotações por mês

@@ -3,7 +3,7 @@ Testes para o módulo de movimentações
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import Mo ck, patch, MagicMock, call
 from datetime import datetime
 import pandas as pd
 import streamlit as st

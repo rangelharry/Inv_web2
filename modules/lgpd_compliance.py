@@ -432,8 +432,8 @@ def show_lgpd_compliance_page():
         with col1:
             st.write("**Registrar Novo Consentimento**")
             
-            email = st.text_input("Email do Titular:")
-            nome = st.text_input("Nome do Titular:")
+            email = st.text_input("Email do Titular:", key="email_titular_consulta")
+            nome = st.text_input("Nome do Titular:", key="nome_titular_consulta")
             
             tipo_consentimento = st.selectbox("Tipo de Consentimento:", [
                 "coleta_dados_funcionais",
@@ -528,9 +528,9 @@ def show_lgpd_compliance_page():
                 "informacao"
             ])
             
-            email_titular = st.text_input("Email do Titular:")
-            nome_titular = st.text_input("Nome do Titular:")
-            descricao_solicitacao = st.text_area("Descrição da Solicitação:")
+            email_titular = st.text_input("Email do Titular:", key="email_titular_solicitacao")
+            nome_titular = st.text_input("Nome do Titular:", key="nome_titular_solicitacao")
+            descricao_solicitacao = st.text_area("Descrição da Solicitação:", key="desc_solicitacao")
             
             if st.button("📝 Criar Solicitação"):
                 if email_titular:
@@ -602,7 +602,7 @@ def show_lgpd_compliance_page():
             col1, col2 = st.columns(2)
             
             with col1:
-                titulo = st.text_input("Título do Incidente:")
+                titulo = st.text_input("Título do Incidente:", key="titulo_incidente")
                 gravidade = st.selectbox("Gravidade:", ["baixa", "media", "alta", "critica"])
                 numero_afetados = st.number_input("Número de Titulares Afetados:", min_value=0, step=1)
             

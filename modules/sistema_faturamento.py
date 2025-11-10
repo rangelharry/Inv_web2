@@ -12,6 +12,17 @@ from typing import Dict, List, Any, Optional
 import plotly.express as px
 import plotly.graph_objects as go
 
+def get_count_result(cursor_result):
+    """Helper para extrair count/valor do resultado do cursor PostgreSQL"""
+    if not cursor_result:
+        return 0
+    if isinstance(cursor_result, dict):
+        return list(cursor_result.values())[0] if cursor_result else 0
+    elif isinstance(cursor_result, (list, tuple)):
+        return cursor_result[0] if cursor_result else 0
+    else:
+        return cursor_result if cursor_result is not None else 0
+
 class FaturamentoManager:
     def __init__(self):
         self.criar_tabelas()
@@ -585,12 +596,14 @@ def show_faturamento_page():
         
         with col1:
             cursor.execute("SELECT COUNT(*) FROM notas_fiscais WHERE EXTRACT(MONTH FROM data_emissao) = EXTRACT(MONTH FROM CURRENT_DATE)")
-            nfs_mes = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            nfs_mes = get_count_result(result)
             st.metric("NFs do Mês", nfs_mes)
         
         with col2:
             cursor.execute("SELECT COALESCE(SUM(valor_total), 0) FROM notas_fiscais WHERE EXTRACT(MONTH FROM data_emissao) = EXTRACT(MONTH FROM CURRENT_DATE)")
-            faturamento_mes = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            faturamento_mes = get_count_result(result)
             st.metric("Faturamento Mês", f"R$ {faturamento_mes:,.2f}")
         
         with col3:

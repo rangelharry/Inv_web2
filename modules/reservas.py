@@ -52,6 +52,59 @@ class ReservaManager:
         if equipamento_id:
             return [r for r in self.reservas if r['equipamento_id'] == equipamento_id]
         return self.reservas
+    
+    def get_equipamentos_disponiveis(self, tipo_equipamento: str, busca: str = "") -> List[Dict[str, Any]]:
+        """Busca equipamentos disponíveis para reserva"""
+        try:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            
+            if tipo_equipamento == "equipamentos_eletricos":
+                query = """
+                    SELECT id, codigo, nome, marca, modelo, status
+                    FROM equipamentos_eletricos 
+                    WHERE ativo = TRUE AND status = 'Ativo'
+                """
+                params = []
+                
+                if busca:
+                    query += " AND (nome ILIKE %s OR codigo ILIKE %s OR marca ILIKE %s)"
+                    busca_param = f"%{busca}%"
+                    params.extend([busca_param, busca_param, busca_param])
+                    
+                query += " ORDER BY nome"
+                cursor.execute(query, params)
+                
+            else:  # equipamentos_manuais
+                query = """
+                    SELECT id, codigo, nome, marca, modelo, status
+                    FROM equipamentos_manuais 
+                    WHERE ativo = TRUE AND status = 'Ativo'
+                """
+                params = []
+                
+                if busca:
+                    query += " AND (nome ILIKE %s OR codigo ILIKE %s OR marca ILIKE %s)"
+                    busca_param = f"%{busca}%"
+                    params.extend([busca_param, busca_param, busca_param])
+                    
+                query += " ORDER BY nome"
+                cursor.execute(query, params)
+            
+            equipamentos = []
+            for row in cursor.fetchall():
+                if isinstance(row, dict):
+                    equipamentos.append(row)
+                else:
+                    # Se for tuple, converter para dict
+                    columns = [desc[0] for desc in cursor.description]
+                    equipamentos.append(dict(zip(columns, row)))
+            
+            return equipamentos
+            
+        except Exception as e:
+            st.error(f"Erro ao buscar equipamentos: {e}")
+            return []
 
     def calendario_disponibilidade(self, equipamento_id: int, mes: int, ano: int) -> List[Dict[str, Any]]:
         reservas = self.listar_reservas(equipamento_id)
@@ -75,9 +128,21 @@ def show_reservas_page():
             tipo_eq = st.selectbox("Tipo de Equipamento:", 
                                  ["equipamentos_eletricos", "equipamentos_manuais"])
             
-            # Simular equipamentos disponíveis
-            if tipo_eq == "equipamentos_eletricos":
-                equipamentos = [{"id": 1, "nome": "Furadeira Industrial"}, 
+            # Campo de busca
+            busca_equipamento = st.text_input("🔍 Buscar equipamento:", 
+                                            placeholder="Digite nome, código ou marca...")
+            
+            # Buscar equipamentos reais do banco
+            equipamentos = manager.get_equipamentos_disponiveis(tipo_eq, busca_equipamento)
+            
+            if equipamentos:
+                equipamento_options = {f"{eq.get('nome', eq.get('codigo', 'N/A'))} ({eq.get('codigo', 'N/A')})": eq['id'] 
+                                     for eq in equipamentos}
+                equipamento_selecionado = st.selectbox("Equipamento:", 
+                                                      list(equipamento_options.keys()))
+                equipamento_id = equipamento_options.get(equipamento_selecionado, 1)
+            else:
+                st.warning("Nenhum equipamento encontrado para os critérios de busca.") 
                                {"id": 2, "nome": "Serra Elétrica"}]
             else:
                 equipamentos = [{"id": 1, "nome": "Martelo"}, 

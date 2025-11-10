@@ -30,43 +30,183 @@ class ManutencaoPreventivaManager:
             )
             """)
             
-            # Tabela de agendamentos de manutenção
+            # Tabela de manutenções programadas (simplificada)
             cursor.execute("""
-            CREATE TABLE IF NOT EXISTS agendamentos_manutencao (
+            CREATE TABLE IF NOT EXISTS manutencoes_programadas (
                 id SERIAL PRIMARY KEY,
-                plano_id INTEGER REFERENCES planos_manutencao(id),
                 equipamento_id INTEGER NOT NULL,
-                tipo_equipamento VARCHAR(20) NOT NULL,
                 data_agendada DATE NOT NULL,
-                data_executada DATE,
-                status VARCHAR(20) DEFAULT 'pendente',
+                descricao TEXT,
+                realizada BOOLEAN DEFAULT FALSE,
+                data_realizacao DATE,
                 observacoes TEXT,
-                responsavel_id INTEGER,
+                responsavel VARCHAR(100),
                 data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
+            
+            # Índices para performance
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_manutencoes_equipamento ON manutencoes_programadas(equipamento_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_manutencoes_data ON manutencoes_programadas(data_agendada)")
             
             conn.commit()
         except Exception as e:
             st.warning(f"Erro ao criar tabelas de manutenção: {e}")
 
     def agendar_manutencao(self, equipamento_id: int, data: datetime.date, descricao: str) -> None:
-        self.manutencoes.append({
-            'equipamento_id': equipamento_id,
-            'data': data,
-            'descricao': descricao,
-            'realizada': False
-        })
+        """Agenda nova manutenção preventiva"""
+        try:
+            if hasattr(self, 'db_manager') and self.db_manager:
+                with self.db_manager.get_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute("""
+                            INSERT INTO manutencoes_programadas 
+                            (equipamento_id, data_agendada, descricao, realizada)
+                            VALUES (%s, %s, %s, FALSE)
+                        """, (equipamento_id, data, descricao))
+                        conn.commit()
+            else:
+                # Fallback para dados em memória
+                self.manutencoes.append({
+                    'equipamento_id': equipamento_id,
+                    'data': data,
+                    'descricao': descricao,
+                    'realizada': False
+                })
+        except Exception as e:
+            st.error(f"Erro ao agendar manutenção: {e}")
+            # Fallback para dados em memória
+            self.manutencoes.append({
+                'equipamento_id': equipamento_id,
+                'data': data,
+                'descricao': descricao,
+                'realizada': False
+            })
+    
+    def get_equipamentos_manutencao(self, busca: str = "") -> List[Dict[str, Any]]:
+        """Busca equipamentos disponíveis para manutenção"""
+        if not hasattr(self, 'db_manager') or not self.db_manager:
+            # Fallback para dados simulados
+            equipamentos = [
+                {"id": 1, "nome": "Furadeira Industrial", "tipo": "equipamentos_eletricos"},
+                {"id": 2, "nome": "Serra Elétrica", "tipo": "equipamentos_eletricos"},
+                {"id": 3, "nome": "Martelo", "tipo": "equipamentos_manuais"},
+                {"id": 4, "nome": "Chave de Fenda", "tipo": "equipamentos_manuais"}
+            ]
+            if busca:
+                return [eq for eq in equipamentos if busca.lower() in eq['nome'].lower()]
+            return equipamentos
+
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Buscar equipamentos elétricos
+                    query_eletricos = """
+                        SELECT id, codigo, nome, marca, modelo, status, 
+                               'Elétrico' as tipo, 'equipamentos_eletricos' as tabela
+                        FROM equipamentos_eletricos 
+                        WHERE ativo = TRUE
+                    """
+                    
+                    # Buscar equipamentos manuais  
+                    query_manuais = """
+                        SELECT id, codigo, nome, marca, modelo, status,
+                               'Manual' as tipo, 'equipamentos_manuais' as tabela
+                        FROM equipamentos_manuais
+                        WHERE ativo = TRUE
+                    """
+                    
+                    params = []
+                    if busca:
+                        busca_param = f"%{busca}%"
+                        query_eletricos += " AND (nome ILIKE %s OR codigo ILIKE %s OR marca ILIKE %s)"
+                        query_manuais += " AND (nome ILIKE %s OR codigo ILIKE %s OR marca ILIKE %s)"
+                        params = [busca_param, busca_param, busca_param]
+                    
+                    # Executar queries
+                    cursor.execute(query_eletricos, params)
+                    equipamentos_eletricos = cursor.fetchall()
+                    
+                    cursor.execute(query_manuais, params)
+                    equipamentos_manuais = cursor.fetchall()
+                    
+                    equipamentos = []
+                    for row in list(equipamentos_eletricos) + list(equipamentos_manuais):
+                        if isinstance(row, dict):
+                            equipamentos.append(row)
+                        else:
+                            columns = [desc[0] for desc in cursor.description]
+                            equipamentos.append(dict(zip(columns, row)))
+            
+                    return equipamentos
+                    
+        except Exception as e:
+            st.error(f"Erro ao buscar equipamentos: {e}")
+            return []
 
     def registrar_realizacao(self, equipamento_id: int, data: datetime.date) -> None:
-        for m in self.manutencoes:
-            if m['equipamento_id'] == equipamento_id and m['data'] == data:
-                m['realizada'] = True
+        """Marca manutenção como realizada"""
+        try:
+            if hasattr(self, 'db_manager') and self.db_manager:
+                with self.db_manager.get_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute("""
+                            UPDATE manutencoes_programadas 
+                            SET realizada = TRUE, data_realizacao = CURRENT_DATE
+                            WHERE equipamento_id = %s AND data_agendada = %s AND realizada = FALSE
+                        """, (equipamento_id, data))
+                        conn.commit()
+            else:
+                # Fallback para dados em memória
+                for m in self.manutencoes:
+                    if m['equipamento_id'] == equipamento_id and m['data'] == data:
+                        m['realizada'] = True
+        except Exception as e:
+            st.error(f"Erro ao registrar realização: {e}")
 
     def listar_manutencoes(self, equipamento_id: int = None) -> List[Dict[str, Any]]:
-        if equipamento_id:
-            return [m for m in self.manutencoes if m['equipamento_id'] == equipamento_id]
-        return self.manutencoes
+        """Busca manutenções agendadas no banco de dados"""
+        if not hasattr(self, 'db_manager') or not self.db_manager:
+            return self.manutencoes  # Fallback para dados simulados
+            
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    query = """
+                        SELECT m.id, m.equipamento_id, m.data_agendada as data, 
+                               m.descricao, m.realizada, m.data_realizacao,
+                               COALESCE(ee.nome, em.nome) as nome_equipamento,
+                               CASE 
+                                   WHEN ee.id IS NOT NULL THEN 'Elétrico'
+                                   WHEN em.id IS NOT NULL THEN 'Manual'
+                                   ELSE 'Desconhecido'
+                               END as tipo_equipamento
+                        FROM manutencoes_programadas m
+                        LEFT JOIN equipamentos_eletricos ee ON m.equipamento_id = ee.id 
+                        LEFT JOIN equipamentos_manuais em ON m.equipamento_id = em.id
+                    """
+                    
+                    params = []
+                    if equipamento_id:
+                        query += " WHERE m.equipamento_id = %s"
+                        params.append(equipamento_id)
+                    
+                    query += " ORDER BY m.data_agendada DESC"
+                    cursor.execute(query, params)
+                    
+                    manutencoes = []
+                    for row in cursor.fetchall():
+                        if isinstance(row, dict):
+                            manutencoes.append(row)
+                        else:
+                            columns = [desc[0] for desc in cursor.description]
+                            manutencoes.append(dict(zip(columns, row)))
+                    
+                    return manutencoes
+                    
+        except Exception as e:
+            st.error(f"Erro ao listar manutenções: {e}")
+            return []
 
     def proximas_manutencoes(self, dias_aviso: int = 30) -> List[Dict[str, Any]]:
         hoje = datetime.date.today()
@@ -87,17 +227,18 @@ def show_manutencao_page():
         col1, col2 = st.columns(2)
         
         with col1:
-            # Simular equipamentos disponíveis
-            equipamentos = [
-                {"id": 1, "nome": "Furadeira Industrial", "tipo": "equipamentos_eletricos"},
-                {"id": 2, "nome": "Serra Elétrica", "tipo": "equipamentos_eletricos"},
-                {"id": 3, "nome": "Martelo", "tipo": "equipamentos_manuais"},
-                {"id": 4, "nome": "Chave de Fenda", "tipo": "equipamentos_manuais"}
-            ]
+            # Busca de equipamentos para manutenção
+            st.markdown("**🔍 Buscar Equipamento**")
+            search_term = st.text_input("Digite o nome do equipamento:", key="manutencao_search")
+            equipamentos = manager.get_equipamentos_manutencao(search_term)
             
-            eq_options = {f"{eq['nome']} (ID: {eq['id']})": eq for eq in equipamentos}
-            eq_selected = st.selectbox("Equipamento:", list(eq_options.keys()))
-            eq = eq_options[eq_selected] if eq_selected else None
+            if equipamentos:
+                eq_options = {f"{eq['nome']} (ID: {eq['id']}) - {eq['tipo']}": eq for eq in equipamentos}
+                eq_selected = st.selectbox("Equipamento:", list(eq_options.keys()), key="manutencao_select")
+                eq = eq_options[eq_selected] if eq_selected else None
+            else:
+                st.warning("Nenhum equipamento encontrado")
+                eq = None
         
         with col2:
             data_agendada = st.date_input("Data da Manutenção:", 
@@ -124,30 +265,44 @@ def show_manutencao_page():
             
             for i, manutencao in enumerate(manutencoes):
                 # Verificar se está vencida
-                vencida = manutencao['data'] < datetime.date.today()
-                status_color = "🔴" if vencida and not manutencao['realizada'] else "🟢"
-                status_text = "Realizada" if manutencao['realizada'] else "Pendente"
+                data_manutencao = manutencao.get('data', manutencao.get('data_agendada', datetime.date.today()))
+                if isinstance(data_manutencao, str):
+                    data_manutencao = datetime.datetime.strptime(data_manutencao, '%Y-%m-%d').date()
                 
-                with st.expander(f"{status_color} Manutenção #{i+1} - Equipamento ID {manutencao['equipamento_id']} - {status_text}"):
+                vencida = data_manutencao < datetime.date.today()
+                realizada = manutencao.get('realizada', False)
+                status_color = "🔴" if vencida and not realizada else "🟢"
+                status_text = "Realizada" if realizada else "Pendente"
+                
+                nome_equipamento = manutencao.get('nome_equipamento', f"Equipamento ID {manutencao.get('equipamento_id', 'N/A')}")
+                tipo_equipamento = manutencao.get('tipo_equipamento', manutencao.get('tipo', 'N/A'))
+                
+                with st.expander(f"{status_color} {nome_equipamento} ({tipo_equipamento}) - {status_text}"):
                     col1, col2, col3 = st.columns(3)
                     
                     with col1:
-                        st.write(f"**Equipamento ID:** {manutencao['equipamento_id']}")
+                        st.write(f"**Equipamento:** {nome_equipamento}")
+                        st.write(f"**Tipo:** {tipo_equipamento}")
                         st.write(f"**Status:** {status_text}")
                     
                     with col2:
-                        st.write(f"**Data Agendada:** {manutencao['data']}")
-                        if vencida and not manutencao['realizada']:
+                        st.write(f"**Data Agendada:** {data_manutencao}")
+                        if vencida and not realizada:
                             st.error("⚠️ Manutenção vencida!")
+                        if manutencao.get('data_realizacao'):
+                            st.write(f"**Data Realizada:** {manutencao['data_realizacao']}")
                     
                     with col3:
-                        st.write(f"**Descrição:** {manutencao['descricao']}")
+                        descricao = manutencao.get('descricao', 'N/A')
+                        st.write(f"**Descrição:** {descricao}")
+                        if manutencao.get('observacoes'):
+                            st.write(f"**Observações:** {manutencao['observacoes']}")
                     
                     # Botão para marcar como realizada
-                    if not manutencao['realizada']:
-                        if st.button(f"✅ Marcar como Realizada", key=f"realizar_{i}"):
-                            manager.registrar_realizacao(manutencao['equipamento_id'], manutencao['data'])
-                            st.success("Manutenção marcada como realizada!")
+                    if not realizada:
+                        if st.button(f"✅ Marcar como Realizada", key=f"realizada_{i}"):
+                            manager.registrar_realizacao(manutencao['equipamento_id'], data_manutencao)
+                            st.experimental_rerun()
                             st.rerun()
         else:
             st.info("ℹ️ Nenhuma manutenção agendada")
