@@ -142,9 +142,7 @@ def show_reservas_page():
                                                       list(equipamento_options.keys()))
                 equipamento_id = equipamento_options.get(equipamento_selecionado, 1)
             else:
-                st.warning("Nenhum equipamento encontrado para os critérios de busca.") 
-                               {"id": 2, "nome": "Serra Elétrica"}]
-            else:
+                st.warning("Nenhum equipamento encontrado para os critérios de busca.")
                 equipamentos = [{"id": 1, "nome": "Martelo"}, 
                                {"id": 2, "nome": "Chave de Fenda"}]
             

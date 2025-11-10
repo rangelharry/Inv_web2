@@ -843,7 +843,7 @@ def show_insumos_page():
         else:
             st.subheader("➕ Cadastrar Novo Insumo")
             
-            with st.form("form_novo_insumo"):
+            with st.form("form_novo_insumo", clear_on_submit=True):
                 insumos_existentes = manager.get_insumos()
                 ultimo_codigo = "INS-0001"
                 if insumos_existentes:
@@ -859,27 +859,28 @@ def show_insumos_page():
                         ultimo_codigo = f"INS-{proximo_num:04d}"
                 col1, col2 = st.columns(2)
                 with col1:
-                    codigo = st.text_input("* Código", value=ultimo_codigo)
-                    descricao = st.text_area("* Descrição", placeholder="Descrição detalhada do insumo")
+                    codigo = st.text_input("* Código", value=ultimo_codigo, key="form_insumo_codigo")
+                    descricao = st.text_area("* Descrição", placeholder="Descrição detalhada do insumo", key="form_insumo_descricao")
                     categorias = manager.get_categorias()
                     if categorias:
                         categoria = st.selectbox(
                             "* Categoria",
                             options=categorias,
-                            format_func=lambda x: x['nome']
+                            format_func=lambda x: x['nome'],
+                            key="form_insumo_categoria"
                         )
                     else:
                         st.error("Nenhuma categoria disponível. Cadastre categorias primeiro.")
                         categoria = None
-                    unidade = st.selectbox("* Unidade", ['UND', 'KG', 'L', 'M', 'M²', 'M³', 'PCT', 'CX', 'GL', 'TON'])
+                    unidade = st.selectbox("* Unidade", ['UND', 'KG', 'L', 'M', 'M²', 'M³', 'PCT', 'CX', 'GL', 'TON'], key="form_insumo_unidade")
                 with col2:
-                    quantidade_atual = st.number_input("Quantidade Atual", min_value=0, value=0, step=1, format="%d")
-                    quantidade_minima = st.number_input("Quantidade Mínima", min_value=0, value=5, step=1, format="%d")
-                    fornecedor = st.text_input("Fornecedor", placeholder="Nome do fornecedor")
-                    marca = st.text_input("Marca", placeholder="Marca do produto")
-                    localizacao = st.text_input("Localização", value="Almoxarifado")
-                data_validade = st.date_input("Data de Validade", value=None)
-                observacoes = st.text_area("Observações", placeholder="Informações adicionais...")
+                    quantidade_atual = st.number_input("Quantidade Atual", min_value=0, value=0, step=1, format="%d", key="form_insumo_qtd_atual")
+                    quantidade_minima = st.number_input("Quantidade Mínima", min_value=0, value=5, step=1, format="%d", key="form_insumo_qtd_min")
+                    fornecedor = st.text_input("Fornecedor", placeholder="Nome do fornecedor", key="form_insumo_fornecedor")
+                    marca = st.text_input("Marca", placeholder="Marca do produto", key="form_insumo_marca")
+                    localizacao = st.text_input("Localização", value="Almoxarifado", key="form_insumo_localizacao")
+                data_validade = st.date_input("Data de Validade", value=None, key="form_insumo_validade")
+                observacoes = st.text_area("Observações", placeholder="Informações adicionais...", key="form_insumo_obs")
                 st.markdown("**Campos obrigatórios estão marcados com ***")
                 if st.form_submit_button("💾 Salvar Insumo", width='stretch'):
                     if codigo and descricao and categoria and unidade:
@@ -900,7 +901,10 @@ def show_insumos_page():
                         if success:
                             st.success(f"✅ {message}")
                             st.balloons()
-                            # Limpar formulário
+                            # Limpar formulário após sucesso
+                            for key in list(st.session_state.keys()):
+                                if key.startswith('form_insumo_'):
+                                    del st.session_state[key]
                             st.rerun()
                         else:
                             st.error(f"❌ {message}")

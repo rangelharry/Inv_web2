@@ -425,7 +425,7 @@ def show_equipamentos_manuais_page():
             
         st.subheader("Adicionar Novo Equipamento Manual")
         
-        with st.form("form_equipamento"):
+        with st.form("form_equipamento", clear_on_submit=True):
             # Buscar equipamentos existentes para gerar código sequencial
             equipamentos_existentes = manager.get_equipamentos()
             ultimo_codigo = "MAN-0001"
@@ -443,17 +443,17 @@ def show_equipamentos_manuais_page():
             
             col1, col2 = st.columns(2)
             with col1:
-                st.text_input("* Código", value=ultimo_codigo, disabled=True)
+                st.text_input("* Código", value=ultimo_codigo, disabled=True, key="form_eq_manual_codigo")
                 codigo = ultimo_codigo
-                nome = st.text_input("Nome do Equipamento *", placeholder="Ex: Furadeira")
-                marca = st.text_input("Marca", placeholder="Ex: Bosch")
-                tipo = st.text_input("Tipo", placeholder="Ex: Ferramenta Manual")
-                quantitativo = st.number_input("Quantidade", min_value=1, value=1, step=1)
+                nome = st.text_input("Nome do Equipamento *", placeholder="Ex: Furadeira", key="form_eq_manual_nome")
+                marca = st.text_input("Marca", placeholder="Ex: Bosch", key="form_eq_manual_marca")
+                tipo = st.text_input("Tipo", placeholder="Ex: Ferramenta Manual", key="form_eq_manual_tipo")
+                quantitativo = st.number_input("Quantidade", min_value=1, value=1, step=1, key="form_eq_manual_qtd")
             with col2:
-                status = st.selectbox("Status", manager.get_status_options())
-                localizacao = st.text_input("Localização", placeholder="Ex: Almoxarifado")
-                valor = st.number_input("Valor", min_value=0.0, step=0.01)
-            observacoes = st.text_area("Observações", placeholder="Observações gerais")
+                status = st.selectbox("Status", manager.get_status_options(), key="form_eq_manual_status")
+                localizacao = st.text_input("Localização", placeholder="Ex: Almoxarifado", key="form_eq_manual_localizacao")
+                valor = st.number_input("Valor", min_value=0.0, step=0.01, key="form_eq_manual_valor")
+            observacoes = st.text_area("Observações", placeholder="Observações gerais", key="form_eq_manual_obs")
             
             submitted = st.form_submit_button("💾 Cadastrar Equipamento", type="primary")
             
@@ -473,6 +473,10 @@ def show_equipamentos_manuais_page():
                     equipamento_id = manager.create_equipamento(data)  # type: ignore
                     if equipamento_id:
                         st.success(f"✅ Equipamento '{nome}' cadastrado com sucesso! (ID: {equipamento_id})")
+                        # Limpar formulário após sucesso
+                        for key in list(st.session_state.keys()):
+                            if key.startswith('form_eq_manual_'):
+                                del st.session_state[key]
                         st.rerun()
                 else:
                     st.error("❌ Preencha o nome do equipamento!")

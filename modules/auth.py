@@ -193,6 +193,146 @@ class AuthenticationManager:
             print(f"LOG: User {user_id} - {action} on {table_name} (item: {item_id}) - {details}")
         except Exception as e:
             print(f"Erro ao registrar log: {e}")
+    
+    def get_user_module_permissions(self, user_id: int) -> dict[str, bool]:
+        """Obtém permissões de módulos do usuário"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT modulo, acesso 
+                FROM permissoes_modulos 
+                WHERE usuario_id = %s
+            """, (user_id,))
+            
+            results = cursor.fetchall()
+            permissions = {}
+            
+            for result in results:
+                if isinstance(result, dict):
+                    permissions[result['modulo']] = result['acesso']
+                else:
+                    permissions[result[0]] = result[1]
+            
+            # Se não tem permissões cadastradas, usar padrões baseados no perfil
+            if not permissions:
+                return self._get_default_permissions_by_profile(user_id)
+            
+            return permissions
+            
+        except Exception as e:
+            print(f"Erro ao buscar permissões de módulo: {e}")
+            # Fallback: retornar permissões baseadas no perfil
+            return self._get_default_permissions_by_profile(user_id)
+    
+    def _get_default_permissions_by_profile(self, user_id: int) -> dict[str, bool]:
+        """Obtém permissões padrão baseadas no perfil do usuário"""
+        try:
+            user_data = self.get_user_by_id(user_id)
+            if not user_data:
+                return {'dashboard': True}  # Acesso mínimo
+            
+            perfil = user_data.get('perfil', 'usuario')
+            
+            if perfil == 'admin':
+                # Admin tem acesso a tudo
+                return {
+                    'dashboard': True,
+                    'insumos': True,
+                    'equipamentos_eletricos': True,
+                    'equipamentos_manuais': True,
+                    'movimentacoes': True,
+                    'obras_departamentos': True,
+                    'responsaveis': True,
+                    'relatorios': True,
+                    'logs_auditoria': True,
+                    'usuarios': True,
+                    'configuracoes': True
+                }
+            elif perfil == 'gestor':
+                # Gestor tem acesso limitado
+                return {
+                    'dashboard': True,
+                    'insumos': True,
+                    'equipamentos_eletricos': True,
+                    'equipamentos_manuais': True,
+                    'movimentacoes': True,
+                    'obras_departamentos': True,
+                    'responsaveis': True,
+                    'relatorios': True
+                }
+            else:
+                # Usuário normal tem acesso básico
+                return {
+                    'dashboard': True,
+                    'insumos': True,
+                    'equipamentos_eletricos': True,
+                    'equipamentos_manuais': True
+                }
+                
+        except Exception as e:
+            print(f"Erro ao obter perfil do usuário: {e}")
+            return {'dashboard': True}
+    
+    def check_module_permission(self, user_id: int, module: str) -> bool:
+        """Verifica se usuário tem acesso ao módulo específico"""
+        try:
+            # Dashboard sempre acessível
+            if module == 'dashboard':
+                return True
+                
+            permissions = self.get_user_module_permissions(user_id)
+            return permissions.get(module, False)
+        except Exception as e:
+            print(f"Erro ao verificar permissão do módulo: {e}")
+            # Dashboard sempre acessível mesmo em caso de erro
+            return module == 'dashboard'
+    
+    def update_user_module_permissions(self, user_id: int, permissions: dict[str, bool]) -> bool:
+        """Atualiza permissões de módulos do usuário"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            for modulo, acesso in permissions.items():
+                cursor.execute("""
+                    INSERT INTO permissoes_modulos (usuario_id, modulo, acesso)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (usuario_id, modulo) 
+                    DO UPDATE SET acesso = EXCLUDED.acesso
+                """, (user_id, modulo, acesso))
+            
+            conn.commit()
+            return True
+            
+        except Exception as e:
+            print(f"Erro ao atualizar permissões: {e}")
+            conn.rollback()
+            return False
+    
+    def logout_user(self, token: str = None) -> bool:
+        """Realiza logout do usuário limpando a sessão"""
+        try:
+            # Limpar dados da sessão
+            if 'authenticated' in st.session_state:
+                del st.session_state.authenticated
+            if 'user_data' in st.session_state:
+                del st.session_state.user_data
+            if 'session_token' in st.session_state:
+                del st.session_state.session_token
+            
+            # Registrar logout no log de auditoria se houver usuário logado
+            if token and 'user_data' in st.session_state:
+                user_id = st.session_state.user_data.get('id')
+                if user_id:
+                    self.log_user_action(user_id, "logout", "Sistema", "Logout realizado com sucesso")
+            
+            return True
+            
+        except Exception as e:
+            print(f"Erro ao realizar logout: {e}")
+            return False
 
 # Instância global do gerenciador de autenticação
 auth_manager = AuthenticationManager()

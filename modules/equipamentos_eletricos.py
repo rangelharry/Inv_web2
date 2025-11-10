@@ -578,7 +578,7 @@ def show_equipamentos_eletricos_page():
             return
             
         st.subheader("Adicionar Novo Equipamento Elétrico")
-        with st.form("form_equipamento"):
+        with st.form("form_equipamento", clear_on_submit=True):
             # Buscar equipamentos existentes para gerar código sequencial
             equipamentos_existentes = manager.get_equipamentos()
             ultimo_codigo = "EQ-0001"
@@ -595,19 +595,19 @@ def show_equipamentos_eletricos_page():
                     ultimo_codigo = f"EQ-{proximo_num:04d}"
             col1, col2 = st.columns(2)
             with col1:
-                st.text_input("* Código", value=ultimo_codigo, disabled=True)
+                st.text_input("* Código", value=ultimo_codigo, disabled=True, key="form_eq_eletrico_codigo")
                 codigo = ultimo_codigo
-                nome = st.text_input("Nome do Equipamento *", placeholder="Ex: Motor Elétrico")
-                marca = st.text_input("Marca", placeholder="Ex: WEG")
-                modelo = st.text_input("Modelo", placeholder="Ex: W22")
-                numero_serie = st.text_input("Número de Série", placeholder="Ex: ABC123")
-                voltagem = st.text_input("Voltagem", placeholder="Ex: 220V")
+                nome = st.text_input("Nome do Equipamento *", placeholder="Ex: Motor Elétrico", key="form_eq_eletrico_nome")
+                marca = st.text_input("Marca", placeholder="Ex: WEG", key="form_eq_eletrico_marca")
+                modelo = st.text_input("Modelo", placeholder="Ex: W22", key="form_eq_eletrico_modelo")
+                numero_serie = st.text_input("Número de Série", placeholder="Ex: ABC123", key="form_eq_eletrico_serie")
+                voltagem = st.text_input("Voltagem", placeholder="Ex: 220V", key="form_eq_eletrico_voltagem")
             with col2:
-                potencia = st.text_input("Potência", placeholder="Ex: 1000W")
-                status = st.selectbox("Status", manager.get_status_options())
-                localizacao = st.text_input("Localização", placeholder="Ex: Almoxarifado")
-                valor_compra = st.number_input("Valor de Compra", min_value=0.0, step=0.01)
-                observacoes = st.text_area("Observações", placeholder="Observações gerais")
+                potencia = st.text_input("Potência", placeholder="Ex: 1000W", key="form_eq_eletrico_potencia")
+                status = st.selectbox("Status", manager.get_status_options(), key="form_eq_eletrico_status")
+                localizacao = st.text_input("Localização", placeholder="Ex: Almoxarifado", key="form_eq_eletrico_localizacao")
+                valor_compra = st.number_input("Valor de Compra", min_value=0.0, step=0.01, key="form_eq_eletrico_valor")
+                observacoes = st.text_area("Observações", placeholder="Observações gerais", key="form_eq_eletrico_obs")
 
             submitted = st.form_submit_button("💾 Cadastrar Equipamento", type="primary")
 
@@ -629,6 +629,10 @@ def show_equipamentos_eletricos_page():
                     equipamento_id = manager.create_equipamento(data)  # type: ignore
                     if equipamento_id:
                         st.success(f"✅ Equipamento '{nome}' cadastrado com sucesso! (ID: {equipamento_id})")
+                        # Limpar formulário após sucesso
+                        for key in list(st.session_state.keys()):
+                            if key.startswith('form_eq_eletrico_'):
+                                del st.session_state[key]
                         st.rerun()
                 else:
                     st.error("❌ Preencha o nome do equipamento!")

@@ -348,37 +348,37 @@ def show_obras_page():
             return
 
         st.subheader("Adicionar Nova Obra/Departamento")
-        with st.form("form_obra"):
+        with st.form("form_obra", clear_on_submit=True):
             st.markdown("### Informações Básicas")
             col1, col2 = st.columns(2)
             with col1:
-                codigo = st.text_input("Código *", placeholder="Ex: OBR-001")
-                nome = st.text_input("Nome *", placeholder="Ex: Obra Residencial - Bairro X")
-                status = st.selectbox("Status *", manager.get_status_options())
-                responsavel = st.text_input("Responsável", placeholder="Ex: João Silva")
+                codigo = st.text_input("Código *", placeholder="Ex: OBR-001", key="form_obra_codigo")
+                nome = st.text_input("Nome *", placeholder="Ex: Obra Residencial - Bairro X", key="form_obra_nome")
+                status = st.selectbox("Status *", manager.get_status_options(), key="form_obra_status")
+                responsavel = st.text_input("Responsável", placeholder="Ex: João Silva", key="form_obra_responsavel")
             with col2:
-                endereco = st.text_input("Endereço", placeholder="Rua, número")
-                cidade = st.text_input("Cidade", placeholder="Nome da cidade")
-                estado = st.text_input("Estado", placeholder="Ex: SP")
-                cep = st.text_input("CEP", placeholder="00000-000")
+                endereco = st.text_input("Endereço", placeholder="Rua, número", key="form_obra_endereco")
+                cidade = st.text_input("Cidade", placeholder="Nome da cidade", key="form_obra_cidade")
+                estado = st.text_input("Estado", placeholder="Ex: SP", key="form_obra_estado")
+                cep = st.text_input("CEP", placeholder="00000-000", key="form_obra_cep")
 
             st.markdown("### Contato")
             col1, col2 = st.columns(2)
             with col1:
-                telefone = st.text_input("Telefone", placeholder="(11) 99999-9999")
+                telefone = st.text_input("Telefone", placeholder="(11) 99999-9999", key="form_obra_telefone")
             with col2:
-                email = st.text_input("Email", placeholder="contato@obra.com")
+                email = st.text_input("Email", placeholder="contato@obra.com", key="form_obra_email")
 
             st.markdown("### Datas e Orçamento")
             col1, col2, col3 = st.columns(3)
             with col1:
-                data_inicio = st.date_input("Data de Início", value=None)
+                data_inicio = st.date_input("Data de Início", value=None, key="form_obra_data_inicio")
             with col2:
-                data_previsao = st.date_input("Data Prevista", value=None)
+                data_previsao = st.date_input("Data Prevista", value=None, key="form_obra_data_previsao")
             with col3:
-                valor_orcado = st.number_input("Valor Orçado (R$)", min_value=0.0, step=0.01)
+                valor_orcado = st.number_input("Valor Orçado (R$)", min_value=0.0, step=0.01, key="form_obra_valor_orcado")
 
-            observacoes = st.text_area("Observações", placeholder="Informações adicionais")
+            observacoes = st.text_area("Observações", placeholder="Informações adicionais", key="form_obra_observacoes")
 
             submitted = st.form_submit_button("💾 Cadastrar Obra/Departamento", type="primary")
 
@@ -406,6 +406,10 @@ def show_obras_page():
                     new_id = manager.create_obra(data)  # type: ignore
                     if new_id:
                         st.success(f"✅ Obra cadastrada com sucesso! (ID: {new_id})")
+                        # Limpar formulário após sucesso
+                        for key in st.session_state.keys():
+                            if key.startswith('form_obra_'):
+                                del st.session_state[key]
                         st.rerun()
 
     # ---- TAB 3: ESTATÍSTICAS ----

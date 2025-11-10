@@ -484,64 +484,66 @@ def show_sidebar():
             </div>
             """, unsafe_allow_html=True)
         
+        # Obter permissões do usuário atual
+        from modules.auth import auth_manager
+        user_permissions = {}
+        if st.session_state.authenticated:
+            user_permissions = auth_manager.get_user_module_permissions(user_data['id'])
+        
+        # Definir todas as opções disponíveis com suas chaves de permissão
+        all_menu_options = [
+            ("Dashboard", "dashboard", "speedometer2"),
+            ("Insumos", "insumos", "box-seam"), 
+            ("Equipamentos Elétricos", "equipamentos_eletricos", "lightning-charge"),
+            ("Equipamentos Manuais", "equipamentos_manuais", "tools"),
+            ("Movimentações", "movimentacao", "arrow-left-right"),
+            ("Obras/Departamentos", "obras", "building"),
+            ("Responsáveis", "responsaveis", "people"),
+            ("Relatórios", "relatorios", "file-earmark-text"),
+            ("Logs de Auditoria", "logs", "journal-text"),
+            ("Usuários", "usuarios", "person-plus"),
+            ("Configurações", "configuracoes", "gear"),
+            ("QR/Códigos de Barras", "qr_codes", "qr-code"),
+            ("Reservas", "reservas", "calendar-check"),
+            ("Manutenção Preventiva", "manutencao", "tools"),
+            ("Dashboard Executivo", "dashboard_exec", "graph-up"),
+            ("Localização", "localizacao", "geo-alt"),
+            ("Gestão Financeira", "financeiro", "currency-dollar"),
+            ("Análise Preditiva", "analise", "graph-up-arrow"),
+            ("Gestão de Subcontratados", "subcontratados", "building-gear"),
+            ("Relatórios Customizáveis", "relatorios_custom", "file-earmark-bar-graph"),
+            ("Métricas Performance", "metricas", "speedometer"),
+            ("Backup e Recovery", "backup", "cloud-download"),
+            ("LGPD/Compliance", "lgpd", "shield-check"),
+            ("Orçamentos e Cotações", "orcamentos", "calculator"),
+            ("Sistema de Faturamento", "faturamento", "receipt"),
+            ("Integração ERP/SAP", "integracao", "diagram-3")
+        ]
+        
+        # Filtrar opções baseadas nas permissões do usuário
+        if st.session_state.authenticated and user_data['perfil'] != 'admin':
+            # Para usuários não-admin, filtrar baseado nas permissões
+            filtered_options = []
+            filtered_icons = []
+            
+            for option_name, permission_key, icon in all_menu_options:
+                # Sempre permitir acesso ao dashboard
+                if permission_key == "dashboard" or user_permissions.get(permission_key, False):
+                    filtered_options.append(option_name)
+                    filtered_icons.append(icon)
+            
+            menu_options = filtered_options
+            menu_icons = filtered_icons
+        else:
+            # Para admins ou usuários não autenticados, mostrar todas as opções
+            menu_options = [option[0] for option in all_menu_options]
+            menu_icons = [option[2] for option in all_menu_options]
+        
         # Menu principal
         selected = option_menu(
             menu_title="📦 Inventário Web",
-            options=[
-                "Dashboard",
-                "Insumos", 
-                "Equipamentos Elétricos",
-                "Equipamentos Manuais",
-                "Movimentações",
-                "Obras/Departamentos",
-                "Responsáveis",
-                "Relatórios",
-                "Logs de Auditoria",
-                "Usuários",
-                "Configurações",
-                "QR/Códigos de Barras",
-                "Reservas",
-                "Manutenção Preventiva",
-                "Dashboard Executivo",
-                "Localização",
-                "Gestão Financeira",
-                "Análise Preditiva",
-                "Gestão de Subcontratados",
-                "Relatórios Customizáveis",
-                "Métricas Performance",
-                "Backup e Recovery",
-                "LGPD/Compliance",
-                "Orçamentos e Cotações",
-                "Sistema de Faturamento",
-                "Integração ERP/SAP"
-            ],
-            icons=[
-                "speedometer2",
-                "box-seam", 
-                "lightning-charge",
-                "tools",
-                "arrow-left-right",
-                "building",
-                "people",
-                "graph-up",
-                "journal-text",
-                "person-gear",
-                "gear",
-                "qr-code",
-                "calendar-check",
-                "wrench-adjustable",
-                "bar-chart",
-                "geo-alt",
-                "calculator",
-                "robot",
-                "file-earmark-text",
-                "speedometer",
-                "shield-check",
-                "shield-lock",
-                "currency-exchange",
-                "receipt",
-                "diagram-3"
-            ],
+            options=menu_options,
+            icons=menu_icons,
             menu_icon="boxes",
             default_index=0,
             styles={

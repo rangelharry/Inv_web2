@@ -332,25 +332,25 @@ def show_responsaveis_page():
             return
         st.subheader("Adicionar Novo Responsável")
         
-        with st.form("form_responsavel"):
+        with st.form("form_responsavel", clear_on_submit=True):
             # Informações básicas
             st.markdown("### Informações Básicas")
             col1, col2 = st.columns(2)
             
             with col1:
-                codigo = st.text_input("Código", placeholder="Ex: RESP001")
-                nome = st.text_input("Nome Completo *", placeholder="Ex: João da Silva")
-                cargo = st.text_input("Cargo *", placeholder="Ex: Engenheiro Civil")
-                email = st.text_input("E-mail *", placeholder="joao@empresa.com")
+                codigo = st.text_input("Código", placeholder="Ex: RESP001", key="form_resp_codigo")
+                nome = st.text_input("Nome Completo *", placeholder="Ex: João da Silva", key="form_resp_nome")
+                cargo = st.text_input("Cargo *", placeholder="Ex: Engenheiro Civil", key="form_resp_cargo")
+                email = st.text_input("E-mail *", placeholder="joao@empresa.com", key="form_resp_email")
             
             with col2:
-                telefone = st.text_input("Telefone *", placeholder="(11) 99999-9999")
-                cpf = st.text_input("CPF", placeholder="000.000.000-00")
-                departamento = st.text_input("Departamento", placeholder="Ex: Engenharia")
-                data_admissao = st.date_input("Data de Admissão", value=None)
+                telefone = st.text_input("Telefone *", placeholder="(11) 99999-9999", key="form_resp_telefone")
+                cpf = st.text_input("CPF", placeholder="000.000.000-00", key="form_resp_cpf")
+                departamento = st.text_input("Departamento", placeholder="Ex: Engenharia", key="form_resp_departamento")
+                data_admissao = st.date_input("Data de Admissão", value=None, key="form_resp_data_admissao")
             
             # Observações
-            observacoes = st.text_area("Observações", placeholder="Informações adicionais")
+            observacoes = st.text_area("Observações", placeholder="Informações adicionais", key="form_resp_obs")
             
             submitted = st.form_submit_button("💾 Cadastrar Responsável", type="primary")
             
@@ -389,6 +389,10 @@ def show_responsaveis_page():
                         if responsavel_id:
                             st.success(f"✅ Responsável '{nome}' cadastrado com sucesso! (ID: {responsavel_id})")
                             st.balloons()  # Efeito visual de sucesso
+                            # Limpar formulário após sucesso
+                            for key in list(st.session_state.keys()):
+                                if key.startswith('form_resp_'):
+                                    del st.session_state[key]
                             st.rerun()
                         else:
                             st.error("❌ Erro interno ao cadastrar responsável. Tente novamente.")

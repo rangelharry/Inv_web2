@@ -102,7 +102,18 @@ class UsuariosManager:
             
             if rows:
                 columns = [desc[0] for desc in cursor.description]
-                df = pd.DataFrame([dict(zip(columns, row)) for row in rows])  # type: ignore
+                # Converter RealDictRow para dicts simples se necessário
+                if hasattr(rows[0], '_asdict'):
+                    # Se é namedtuple
+                    data_list = [row._asdict() for row in rows]
+                elif hasattr(rows[0], 'keys'):
+                    # Se é RealDictRow
+                    data_list = [dict(row) for row in rows]
+                else:
+                    # Se é tupla simples
+                    data_list = [dict(zip(columns, row)) for row in rows]
+                
+                df = pd.DataFrame(data_list)  # type: ignore
                 return df
             else:
                 return pd.DataFrame()  # type: ignore
@@ -381,6 +392,46 @@ def show_usuarios_page():
                         new_senha = st.text_input("Nova Senha (opcional)", type="password")
                         confirm_senha = st.text_input("Confirmar Nova Senha", type="password")
                     
+                    # Seção de permissões de módulos
+                    st.subheader("🔒 Permissões de Acesso aos Módulos")
+                    
+                    # Obter permissões atuais do usuário
+                    from modules.auth import auth_manager
+                    current_permissions = auth_manager.get_user_module_permissions(user_to_edit['id'])
+                    
+                    # Lista de módulos disponíveis
+                    modules_list = [
+                        ("equipamentos_eletricos", "Equipamentos Elétricos"),
+                        ("equipamentos_manuais", "Equipamentos Manuais"), 
+                        ("insumos", "Insumos"),
+                        ("movimentacao", "Movimentação"),
+                        ("reservas", "Reservas"),
+                        ("relatorios", "Relatórios"),
+                        ("dashboard", "Dashboard"),
+                        ("configuracoes", "Configurações"),
+                        ("usuarios", "Usuários"),
+                        ("backup", "Backup"),
+                        ("logs", "Logs de Auditoria")
+                    ]
+                    
+                    st.write("Selecione os módulos que o usuário poderá acessar:")
+                    edit_permissions = {}
+                    
+                    # Criar checkboxes em colunas
+                    col_perm1, col_perm2, col_perm3 = st.columns(3)
+                    
+                    for idx, (module_key, module_name) in enumerate(modules_list):
+                        # Distribuir entre as colunas
+                        col = [col_perm1, col_perm2, col_perm3][idx % 3]
+                        with col:
+                            # Verificar se o usuário tem acesso atualmente a este módulo
+                            has_access = current_permissions.get(module_key, False)
+                            edit_permissions[module_key] = st.checkbox(
+                                module_name, 
+                                value=has_access,
+                                key=f"edit_perm_{user_to_edit['id']}_{module_key}"
+                            )
+                    
                     col_save, col_cancel = st.columns(2)
                     
                     with col_save:
@@ -419,8 +470,10 @@ def show_usuarios_page():
                                     st.info("🔐 Nova senha será aplicada...")  # type: ignore
                                 
                                 # Executar atualização
-                                
                                 if manager.update_usuario(user_to_edit['id'], update_data):  # type: ignore
+                                    # Atualizar permissões de módulos
+                                    auth_manager.update_user_module_permissions(user_to_edit['id'], edit_permissions)
+                                    
                                     st.session_state.editing_user = None  # type: ignore
                                     st.rerun()  # type: ignore
                                 else:  # type: ignore
@@ -473,28 +526,73 @@ def show_usuarios_page():
         
         st.subheader("Adicionar Novo Usuário")
         
-        with st.form("form_usuario"):
+        with st.form("form_usuario", clear_on_submit=True):
             # Informações básicas
             st.markdown("### Informações Básicas")
             col1, col2 = st.columns(2)
             
             with col1:
-                nome = st.text_input("Nome Completo *", placeholder="Ex: João Silva")
-                email = st.text_input("E-mail *", placeholder="joao@empresa.com")
+                nome = st.text_input("Nome Completo *", placeholder="Ex: João Silva", key="form_usuario_nome")
+                email = st.text_input("E-mail *", placeholder="joao@empresa.com", key="form_usuario_email")
             
             with col2:
-                perfil = st.selectbox("Perfil *", manager.get_perfis())
-                ativo = st.checkbox("Usuário Ativo", value=True)
+                perfil = st.selectbox("Perfil *", manager.get_perfis(), key="form_usuario_perfil")
+                ativo = st.checkbox("Usuário Ativo", value=True, key="form_usuario_ativo")
             
             # Senha
             st.markdown("### Credenciais de Acesso")
             col1, col2 = st.columns(2)
             
             with col1:
-                senha = st.text_input("Senha *", type="password", placeholder="Mínimo 6 caracteres")
+                senha = st.text_input("Senha *", type="password", placeholder="Mínimo 6 caracteres", key="form_usuario_senha")
             
             with col2:
-                confirma_senha = st.text_input("Confirmar Senha *", type="password")
+                confirma_senha = st.text_input("Confirmar Senha *", type="password", key="form_usuario_confirma_senha")
+            
+            # Permissões por módulo
+            st.markdown("### 🔐 Permissões por Módulo")
+            st.info("Selecione quais módulos este usuário poderá acessar:")
+            
+            # Lista de módulos disponíveis
+            modulos_disponiveis = [
+                ("dashboard", "📊 Dashboard", True),  # Dashboard sempre habilitado
+                ("insumos", "📦 Insumos", False),
+                ("equipamentos_eletricos", "⚡ Equipamentos Elétricos", False),
+                ("equipamentos_manuais", "🔧 Equipamentos Manuais", False),
+                ("movimentacoes", "🔄 Movimentações", False),
+                ("obras_departamentos", "🏗️ Obras/Departamentos", False),
+                ("responsaveis", "👥 Responsáveis", False),
+                ("relatorios", "📊 Relatórios", False),
+                ("logs_auditoria", "📋 Logs de Auditoria", False),
+                ("usuarios", "👤 Usuários", False),
+                ("configuracoes", "⚙️ Configurações", False)
+            ]
+            
+            col_perm1, col_perm2 = st.columns(2)
+            permissions = {}
+            
+            for i, (modulo_id, modulo_nome, default_value) in enumerate(modulos_disponiveis):
+                col = col_perm1 if i % 2 == 0 else col_perm2
+                
+                with col:
+                    if modulo_id == "dashboard":
+                        st.checkbox(modulo_nome, value=True, disabled=True, key=f"perm_{modulo_id}")
+                        permissions[modulo_id] = True
+                    elif modulo_id in ["usuarios", "configuracoes"] and perfil != "admin":
+                        st.checkbox(modulo_nome, value=False, disabled=True, key=f"perm_{modulo_id}")
+                        permissions[modulo_id] = False
+                    else:
+                        # Definir valores padrão baseados no perfil selecionado
+                        if perfil == "admin":
+                            default_perm = True
+                        elif perfil == "gestor" and modulo_id in ["insumos", "equipamentos_eletricos", "equipamentos_manuais", "movimentacoes", "obras_departamentos", "responsaveis", "relatorios"]:
+                            default_perm = True
+                        elif perfil == "usuario" and modulo_id in ["insumos", "equipamentos_eletricos", "equipamentos_manuais"]:
+                            default_perm = True
+                        else:
+                            default_perm = False
+                            
+                        permissions[modulo_id] = st.checkbox(modulo_nome, value=default_perm, key=f"perm_{modulo_id}")
             
             submitted = st.form_submit_button("💾 Cadastrar Usuário", type="primary")
             
@@ -515,7 +613,15 @@ def show_usuarios_page():
                         
                         usuario_id = manager.create_usuario(data)  # type: ignore
                         if usuario_id:
+                            # Salvar permissões de módulos
+                            from modules.auth import auth_manager
+                            auth_manager.update_user_module_permissions(usuario_id, permissions)
+                            
                             st.success(f"✅ Usuário '{nome}' cadastrado com sucesso! (ID: {usuario_id})")
+                            # Limpar formulário após sucesso
+                            for key in list(st.session_state.keys()):
+                                if key.startswith('form_usuario_') or key.startswith('perm_'):
+                                    del st.session_state[key]
                             st.rerun()
                 else:
                     st.error("❌ Preencha todos os campos obrigatórios marcados com *")
