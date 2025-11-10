@@ -185,6 +185,14 @@ class AuthenticationManager:
         
         user_permissions = permissions.get(user_perfil, [])
         return action in user_permissions
+    
+    def log_action(self, user_id: int, action: str, table_name: str, item_id=None, details: str = ""):
+        """Registra ação no log de auditoria (método simplificado)"""
+        try:
+            # Para compatibilidade - apenas imprime no console por enquanto
+            print(f"LOG: User {user_id} - {action} on {table_name} (item: {item_id}) - {details}")
+        except Exception as e:
+            print(f"Erro ao registrar log: {e}")
 
 # Instância global do gerenciador de autenticação
 auth_manager = AuthenticationManager()

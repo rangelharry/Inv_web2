@@ -14,7 +14,10 @@ class ObrasManager:
     def create_obra(self, data: dict[str, Any]) -> int | None:
         """Cria uma nova obra/departamento"""
         try:
-            cursor = self.db.get_connection().cursor()  # type: ignore
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            print(f"DEBUG: Tentando inserir obra: {data['codigo']} - {data['nome']}")
 
             cursor.execute("""
                 INSERT INTO obras (
@@ -22,6 +25,7 @@ class ObrasManager:
                     responsavel, telefone, email, observacoes,
                     data_inicio, data_previsao, valor_orcado, valor_gasto, criado_por
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
             """, (
                 data['codigo'], data['nome'], data.get('endereco', ''),
                 data.get('cidade', ''), data.get('estado', ''), data.get('cep', ''),
@@ -31,12 +35,23 @@ class ObrasManager:
                 data.get('valor_orcado', 0), data.get('valor_gasto', 0),
                 data.get('criado_por')
             ))
-
-            # Recuperar o id da obra criada
-            cursor.execute("SELECT currval(pg_get_serial_sequence('obras','id'))")
+            
             result = cursor.fetchone()
-            obra_id = result['id'] if result else None
-            self.db.get_connection().commit()  # type: ignore
+            print(f"DEBUG: Resultado RETURNING: {result}")
+            
+            if result:
+                if isinstance(result, dict) and 'id' in result:
+                    obra_id = result['id']
+                else:
+                    obra_id = result[0]
+            else:
+                obra_id = None
+                
+            print(f"DEBUG: ID extraído: {obra_id}")
+            
+            # Commit a transação
+            conn.commit()
+            print(f"DEBUG: Commit executado com sucesso")
 
             # Log da ação
             auth_manager.log_action(
@@ -48,6 +63,7 @@ class ObrasManager:
 
             return obra_id
         except Exception as e:
+            print(f"DEBUG: Erro durante inserção: {e}")
             self.db.get_connection().rollback()  # type: ignore
             st.error(f"Erro ao criar obra: {e}")
             return None
@@ -73,7 +89,7 @@ class ObrasManager:
                     query += " AND nome LIKE %s"
                     params.append(f"%{filters['nome']}%")  # type: ignore
                 if filters.get('status'):
-                    query += " AND status = %s"
+                    query += " AND LOWER(status) = LOWER(%s)"
                     params.append(filters['status'])  # type: ignore
                 if filters.get('responsavel'):
                     query += " AND responsavel LIKE %s"
@@ -84,14 +100,28 @@ class ObrasManager:
             cursor.execute(query, params)
             results = cursor.fetchall()
 
-            columns = [
-                'id', 'codigo', 'nome', 'endereco', 'cidade', 'estado', 'cep', 'status',
-                'responsavel', 'telefone', 'email', 'observacoes',
-                'data_inicio', 'data_previsao', 'data_conclusao',
-                'valor_orcado', 'valor_gasto', 'data_criacao'
-            ]
-
-            return pd.DataFrame(results, columns=columns) if results else pd.DataFrame()
+            # Conversão robusta para DataFrame
+            if results:
+                # Converte para lista de dicts se não for
+                if results and hasattr(results[0], '_asdict'):
+                    # Se é namedtuple
+                    data_list = [row._asdict() for row in results]
+                elif results and isinstance(results[0], dict):
+                    # Se já é dict (RealDictRow)
+                    data_list = [dict(row) for row in results]
+                else:
+                    # Se é tupla, criar dict manualmente
+                    columns = [
+                        'id', 'codigo', 'nome', 'endereco', 'cidade', 'estado', 'cep', 'status',
+                        'responsavel', 'telefone', 'email', 'observacoes',
+                        'data_inicio', 'data_previsao', 'data_conclusao',
+                        'valor_orcado', 'valor_gasto', 'data_criacao'
+                    ]
+                    data_list = [dict(zip(columns, row)) for row in results]
+                
+                return pd.DataFrame(data_list)
+            else:
+                return pd.DataFrame()
 
         except Exception as e:
             st.error(f"Erro ao buscar obras: {e}")
@@ -221,6 +251,12 @@ def show_obras_page():
             filters['responsavel'] = filtro_responsavel
 
         df = manager.get_obras(filters)  # type: ignore
+        
+        # Debug: verificar se está carregando dados
+        print(f"DEBUG: Número de obras encontradas: {len(df)}")
+        if not df.empty:
+            print(f"DEBUG: Primeiras linhas: {df.head()}")
+        
         if not df.empty:
             # Cabeçalho da tabela
             col_header = st.columns([1, 2, 1, 1.5, 1, 1, 1.2, 1.2, 0.8, 0.8])

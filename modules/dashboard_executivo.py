@@ -163,7 +163,7 @@ def show_tendencias_insumos():
         
         # Insumos com maior rotatividade
         cursor.execute("""
-            SELECT i.nome, i.quantidade_atual, i.quantidade_minima,
+            SELECT i.descricao as nome, i.quantidade_atual, i.quantidade_minima,
                    CASE WHEN i.quantidade_atual <= i.quantidade_minima THEN 'Crítico'
                         WHEN i.quantidade_atual <= i.quantidade_minima * 2 THEN 'Baixo'
                         ELSE 'Normal' END as status_estoque

@@ -20,6 +20,56 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# CSS personalizado para melhorar o visual das notificações
+st.markdown("""
+<style>
+    /* Estilo para containers de notificações */
+    .notification-container {
+        background: rgba(255,255,255,0.05);
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 0.5rem 0;
+        border-left: 4px solid #ff6b6b;
+    }
+    
+    .notification-success {
+        border-left-color: #51cf66;
+    }
+    
+    .notification-warning {
+        border-left-color: #ffd43b;
+    }
+    
+    .notification-info {
+        border-left-color: #74c0fc;
+    }
+    
+    /* Melhorar espaçamento das métricas */
+    .metric-container {
+        background: rgba(255,255,255,0.02);
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 0.25rem 0;
+    }
+    
+    /* Estilo para botões de detalhes */
+    .stButton > button {
+        width: 100%;
+        border-radius: 20px;
+        border: none;
+        background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Importações dos módulos
 try:
     from database.connection import db
@@ -241,15 +291,27 @@ def get_dashboard_metrics() -> MetricsData:
         
         results = cursor.fetchall()
         for row in results:
-            tipo = row['tipo']
-            total = row['total'] 
-            alertas = row['alertas']
-            valor = row['valor_total']
-            metrics[tipo] = {
-                'total': total or 0,
-                'alertas': alertas or 0,
-                'valor_total': valor or 0
-            }
+            # Tratar resultados do PostgreSQL de forma robusta
+            if isinstance(row, dict):
+                tipo = row.get('tipo')
+                total = row.get('total', 0) 
+                alertas = row.get('alertas', 0)
+                valor = row.get('valor_total', 0)
+            else:
+                # Se for tuple, converter usando cursor.description
+                columns = [desc[0] for desc in cursor.description]
+                row_dict = dict(zip(columns, row))
+                tipo = row_dict.get('tipo')
+                total = row_dict.get('total', 0)
+                alertas = row_dict.get('alertas', 0)
+                valor = row_dict.get('valor_total', 0)
+                
+            if tipo:
+                metrics[tipo] = {
+                    'total': total or 0,
+                    'alertas': alertas or 0,
+                    'valor_total': valor or 0
+                }
         
         # Movimentações recentes
         cursor.execute("""
@@ -343,26 +405,55 @@ def show_dashboard():
         help="Valor total de todo o inventário"
     )
 
+    # Seção de Notificações com melhor organização
+    st.subheader("🚨 Alertas e Notificações")
+    
     # Notificações operacionais (estoque baixo, vencimento, vida útil)
     # Buscar dados detalhados dos insumos e equipamentos para notificação
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+        
+        # Função helper para converter resultados PostgreSQL
+        def convert_results_to_dict(results, cursor):
+            if not results:
+                return []
+            converted = []
+            for row in results:
+                if isinstance(row, dict):
+                    converted.append(row)
+                else:
+                    # Se for tuple, converter usando cursor.description
+                    columns = [desc[0] for desc in cursor.description]
+                    converted.append(dict(zip(columns, row)))
+            return converted
+        
         # Insumos
-        cursor.execute("SELECT nome, quantidade_atual as quantidade, quantidade_minima, data_vencimento FROM insumos WHERE ativo = TRUE")
-        insumos = cursor.fetchall()
-        notificar_estoque_baixo(insumos, limite=5)
-        notificar_vencimento(insumos, dias_aviso=30)
+        cursor.execute("SELECT descricao as nome, quantidade_atual, quantidade_minima, data_validade FROM insumos WHERE ativo = TRUE")
+        insumos = convert_results_to_dict(cursor.fetchall(), cursor)
+        
+        # Container organizado para notificações
+        with st.container():
+            # Verificar se há notificações antes de exibir
+            notificar_estoque_baixo(insumos, limite=5)
+            notificar_vencimento(insumos, dias_aviso=30)
+            
+            # Se não houver alertas, mostrar mensagem positiva
+            if not any(item.get('quantidade_atual', 0) <= 5 for item in insumos):
+                if not any(True for item in insumos if item.get('data_validade')):  # Se não há itens com data de validade para verificar
+                    st.success("✅ **Nenhum alerta no momento** - Todos os estoques estão em níveis adequados")
+        
         # Equipamentos Elétricos
-        cursor.execute("SELECT nome, data_aquisicao, vida_util_anos FROM equipamentos_eletricos WHERE ativo = TRUE")
-        eq_eletricos = cursor.fetchall()
-        notificar_vida_util(eq_eletricos, percentual_aviso=0.9)
+        cursor.execute("SELECT nome, data_compra FROM equipamentos_eletricos WHERE ativo = TRUE")
+        eq_eletricos = convert_results_to_dict(cursor.fetchall(), cursor)
+        # notificar_vida_util(eq_eletricos, percentual_aviso=0.9)  # Comentado - coluna vida_util_anos não existe
+        
         # Equipamentos Manuais
-        cursor.execute("SELECT nome, data_aquisicao, vida_util_anos FROM equipamentos_manuais WHERE ativo = TRUE")
-        eq_manuais = cursor.fetchall()
-        notificar_vida_util(eq_manuais, percentual_aviso=0.9)
+        cursor.execute("SELECT descricao as nome, data_compra FROM equipamentos_manuais WHERE ativo = TRUE")
+        eq_manuais = convert_results_to_dict(cursor.fetchall(), cursor)
+        # notificar_vida_util(eq_manuais, percentual_aviso=0.9)  # Comentado - coluna vida_util_anos não existe
     except Exception as e:
-        st.warning(f"Não foi possível exibir notificações operacionais: {e}")
+        st.error(f"❌ Erro ao carregar notificações: {e}")
 
     # Atividade recente
     st.subheader("📈 Atividade Recente")

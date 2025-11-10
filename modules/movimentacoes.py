@@ -21,28 +21,36 @@ class MovimentacoesManager:
     def create_movimentacao(self, data: dict[str, Any], usuario_id: int) -> int | None:
         """Cria uma nova movimentação"""
         try:
-            # Garantir que a conexão esteja limpa
             conn = self.db.get_connection()
-            if conn and hasattr(conn, 'rollback'):
-                conn.rollback()
-            
-            cursor = conn.cursor() if conn else None
-            if not cursor:
+            if not conn:
                 return None
                 
-            # Verifica se há quantidade suficiente para saída
-            if data['tipo'] == 'Saída':
+            # Garantir que a conexão esteja limpa
+            if hasattr(conn, 'rollback'):
+                conn.rollback()
+            
+            cursor = conn.cursor()
+                
+            # Verifica se há quantidade suficiente para saída (apenas para insumos)
+            if data['tipo'] == 'Saída' and data.get('tipo_item') == 'insumo':
                 cursor.execute("""
-                    SELECT quantidade_atual FROM insumos WHERE id = %s
+                    SELECT quantidade_atual FROM insumos WHERE id = %s AND ativo = TRUE
                 """, (data['item_id'],))
-                item = cursor.fetchone()
-                if item:
-                    quantidade_atual = item[0]
+                result = cursor.fetchone()
+                
+                if result:
+                    # Tratamento robusto para diferentes tipos de resultado
+                    if isinstance(result, dict):
+                        quantidade_atual = result.get('quantidade_atual', 0)
+                    else:
+                        quantidade_atual = result[0] if result else 0
                 else:
                     quantidade_atual = 0
-                if not item or quantidade_atual < data['quantidade']:
+                    
+                if quantidade_atual < data['quantidade']:
                     st.error(f"❌ Quantidade insuficiente! Disponível: {quantidade_atual}")
                     return None
+                    
             # Inserção da movimentação
             cursor.execute(
                 """
@@ -52,20 +60,36 @@ class MovimentacoesManager:
                     responsavel_origem_id, responsavel_destino_id,
                     valor_unitario, observacoes, data_movimentacao, usuario_id
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
                 """,
                 (
                     data['item_id'], data['tipo'], data['tipo_item'], data['quantidade'],
                     data.get('motivo'),
                     data.get('obra_origem_id'), data.get('obra_destino_id'),
                     data.get('responsavel_origem_id'), data.get('responsavel_destino_id'),
-                    data.get('valor_unitario'), data.get('observacoes'), datetime.now(), usuario_id
+                    data.get('valor_unitario'), data.get('observacoes'), 
+                    datetime.now(), usuario_id
                 )
             )
-            self.db.get_connection().commit()  # type: ignore
-            # Recuperar o id da movimentação criada
-            cursor.execute("SELECT currval(pg_get_serial_sequence('movimentacoes','id'))")
+            
+            # Recuperar o ID da movimentação criada
             result = cursor.fetchone()
-            return result.get('id', 0) if result and hasattr(result, 'get') else 0
+            movimentacao_id = None
+            
+            if result:
+                if isinstance(result, dict):
+                    movimentacao_id = result.get('id')
+                else:
+                    movimentacao_id = result[0] if result else None
+                    
+            conn.commit()
+            
+            # Atualizar estoque se for movimentação de insumo
+            if data.get('tipo_item') == 'insumo' and movimentacao_id:
+                self._atualizar_estoque_insumo(data['item_id'], data['quantidade'], data['tipo'])
+            
+            return movimentacao_id
+            
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
             conn = self.db.get_connection()
@@ -73,26 +97,64 @@ class MovimentacoesManager:
                 conn.rollback()
             st.error(f"Erro ao registrar movimentação: {e}")
             return None
+    
+    def _atualizar_estoque_insumo(self, item_id: int, quantidade: int, tipo: str) -> None:
+        """Atualiza estoque do insumo após movimentação"""
+        try:
+            conn = self.db.get_connection()
+            if not conn:
+                return
+                
+            cursor = conn.cursor()
+            
+            if tipo == 'Entrada':
+                cursor.execute("""
+                    UPDATE insumos 
+                    SET quantidade_atual = quantidade_atual + %s,
+                        data_ultima_entrada = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (quantidade, item_id))
+            elif tipo == 'Saída':
+                cursor.execute("""
+                    UPDATE insumos 
+                    SET quantidade_atual = quantidade_atual - %s,
+                        data_ultima_saida = CURRENT_TIMESTAMP
+                    WHERE id = %s AND quantidade_atual >= %s
+                """, (quantidade, item_id, quantidade))
+                
+            conn.commit()
+            
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            st.error(f"Erro ao atualizar estoque: {e}")
 
     def get_movimentacoes(self, filters: dict[str, Any]) -> pd.DataFrame:
         """Busca movimentações conforme filtros"""
         try:
-            # Garantir que a conexão esteja limpa
             conn = self.db.get_connection()
-            if conn and hasattr(conn, 'rollback'):
+            if not conn:
+                return pd.DataFrame()
+                
+            # Garantir que a conexão esteja limpa
+            if hasattr(conn, 'rollback'):
                 conn.rollback()
             
-            cursor = conn.cursor() if conn else None
-            if not cursor:
-                return None
+            cursor = conn.cursor()
+            
             query = """
                 SELECT m.id, m.data_movimentacao, m.tipo, m.quantidade, m.motivo,
                        o1.nome as obra_origem, o2.nome as obra_destino,
                        r1.nome as responsavel_origem, r2.nome as responsavel_destino,
                        m.valor_unitario, m.observacoes,
-                       i.descricao as item_nome, i.codigo, u.nome as usuario_nome
+                       COALESCE(i.descricao, ee.nome, em.descricao) as item_nome, 
+                       COALESCE(i.codigo, ee.codigo, em.codigo) as codigo, 
+                       u.nome as usuario_nome,
+                       m.tipo_item
                 FROM movimentacoes m
-                LEFT JOIN insumos i ON m.item_id = i.id
+                LEFT JOIN insumos i ON m.item_id = i.id AND m.tipo_item = 'insumo'
+                LEFT JOIN equipamentos_eletricos ee ON m.item_id = ee.id AND m.tipo_item = 'equipamento_eletrico'
+                LEFT JOIN equipamentos_manuais em ON m.item_id = em.id AND m.tipo_item = 'equipamento_manual'
                 LEFT JOIN obras o1 ON m.obra_origem_id = o1.id
                 LEFT JOIN obras o2 ON m.obra_destino_id = o2.id
                 LEFT JOIN responsaveis r1 ON m.responsavel_origem_id = r1.id
@@ -101,40 +163,62 @@ class MovimentacoesManager:
                 WHERE 1=1
             """
             params: list[Any] = []
+            
             if filters.get('item_nome'):
-                query += " AND i.descricao LIKE %s"
-                params.append(f"%{filters['item_nome']}%")
+                query += """ AND (
+                    i.descricao LIKE %s OR 
+                    ee.nome LIKE %s OR 
+                    em.descricao LIKE %s
+                )"""
+                busca = f"%{filters['item_nome']}%"
+                params.extend([busca, busca, busca])
+                
             if filters.get('tipo'):
                 query += " AND m.tipo = %s"
                 params.append(filters['tipo'])
+                
             if filters.get('obra_origem'):
                 query += " AND o1.nome LIKE %s"
                 params.append(f"%{filters['obra_origem']}%")
+                
             if filters.get('obra_destino'):
                 query += " AND o2.nome LIKE %s"
                 params.append(f"%{filters['obra_destino']}%")
+                
             if filters.get('responsavel_origem'):
                 query += " AND r1.nome LIKE %s"
                 params.append(f"%{filters['responsavel_origem']}%")
+                
             if filters.get('responsavel_destino'):
                 query += " AND r2.nome LIKE %s"
                 params.append(f"%{filters['responsavel_destino']}%")
+                
             if filters.get('data_inicio'):
                 query += " AND m.data_movimentacao::date >= %s"
                 params.append(filters['data_inicio'])
+                
             if filters.get('data_fim'):
                 query += " AND m.data_movimentacao::date <= %s"
                 params.append(filters['data_fim'])
+                
             query += " ORDER BY m.data_movimentacao DESC"
             cursor.execute(query, params)  # type: ignore
             results = cursor.fetchall()
-            columns = [
-                'id', 'data_movimentacao', 'tipo', 'quantidade',
-                'motivo', 'obra_origem', 'obra_destino', 'responsavel_origem',
-                'responsavel_destino', 'valor_unitario', 'observacoes',
-                'item_nome', 'codigo', 'usuario_nome'
-            ]
-            return pd.DataFrame(results, columns=columns) if results else pd.DataFrame()
+            
+            if not results:
+                return pd.DataFrame()
+                
+            # Tratamento robusto de resultados
+            movimentacoes = []
+            for row in results:
+                if isinstance(row, dict):
+                    movimentacoes.append(dict(row))
+                else:
+                    columns = [desc[0] for desc in cursor.description]
+                    movimentacoes.append(dict(zip(columns, row)))
+                    
+            return pd.DataFrame(movimentacoes)
+            
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
             conn = self.db.get_connection()
@@ -143,29 +227,46 @@ class MovimentacoesManager:
             st.error(f"Erro ao buscar movimentações: {e}")
             return pd.DataFrame()
 
-    def get_items_para_movimentacao(self) -> list[tuple[int, str, str, float, str]]:
+    def get_items_para_movimentacao(self) -> list[dict[str, Any]]:
         """Busca itens disponíveis para movimentação"""
         try:
-            # Garantir que a conexão esteja limpa
             conn = self.db.get_connection()
-            if conn and hasattr(conn, 'rollback'):
+            if not conn:
+                return []
+                
+            # Garantir que a conexão esteja limpa
+            if hasattr(conn, 'rollback'):
                 conn.rollback()
             
-            cursor = conn.cursor() if conn else None
-            if not cursor:
-                return None
+            cursor = conn.cursor()
             cursor.execute("""
                 SELECT id, descricao, codigo, quantidade_atual, unidade
                 FROM insumos 
                 WHERE ativo = TRUE
                 ORDER BY descricao
             """)
-            return cursor.fetchall()
+            
+            results = cursor.fetchall()
+            if not results:
+                return []
+                
+            # Tratamento robusto de resultados
+            items = []
+            for row in results:
+                if isinstance(row, dict):
+                    items.append(dict(row))
+                else:
+                    columns = [desc[0] for desc in cursor.description]
+                    items.append(dict(zip(columns, row)))
+                    
+            return items
+            
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
             conn = self.db.get_connection()
             if conn and hasattr(conn, 'rollback'):
                 conn.rollback()
+            st.error(f"Erro ao buscar itens: {e}")
             return []
 
     def get_dashboard_stats(self) -> dict[str, int]:

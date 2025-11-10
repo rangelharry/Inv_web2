@@ -49,7 +49,11 @@ class ResponsaveisManager:
     def get_responsaveis(self, filters: dict[str, Any] | None = None) -> pd.DataFrame:
         """Busca responsáveis com filtros"""
         try:
-            cursor = self.db.get_connection().cursor()
+            conn = self.db.get_connection()
+            if not conn:
+                return pd.DataFrame()
+            
+            cursor = conn.cursor()
             
             query = """
                 SELECT 
@@ -71,20 +75,29 @@ class ResponsaveisManager:
                     query += " AND departamento LIKE %s"
                     params.append(f"%{filters['departamento']}%")
                 if filters.get('ativo') is not None:
-                    query += " AND ativo = %s"
-                    params.append(filters['ativo'])
+                    # Corrigir comparação boolean
+                    if isinstance(filters['ativo'], (bool, int)):
+                        query += " AND ativo = %s"
+                        params.append(bool(filters['ativo']))
             
             query += " ORDER BY nome"
             
             cursor.execute(query, params)
             results = cursor.fetchall()
             
-            columns = [
-                'id', 'codigo', 'nome', 'cargo', 'email', 'telefone', 'cpf',
-                'departamento', 'data_admissao', 'ativo', 'observacoes', 'data_criacao'
-            ]
+            # Tratamento robusto de resultados PostgreSQL
+            if not results:
+                return pd.DataFrame()
+                
+            responsaveis = []
+            for row in results:
+                if isinstance(row, dict):
+                    responsaveis.append(dict(row))
+                else:
+                    columns = [desc[0] for desc in cursor.description]
+                    responsaveis.append(dict(zip(columns, row)))
             
-            return pd.DataFrame(results, columns=columns) if results else pd.DataFrame()
+            return pd.DataFrame(responsaveis) if responsaveis else pd.DataFrame()
             
         except Exception as e:
             st.error(f"Erro ao buscar responsáveis: {e}")

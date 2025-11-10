@@ -75,7 +75,6 @@ def show_movimentacao_entrada_insumo(item_id: int) -> None:
             movimentacao_id = manager.create_movimentacao(data, usuario_id)
             if movimentacao_id:
                 st.success(f"✅ ENTRADA registrada com sucesso! (ID: {movimentacao_id})")
-                st.session_state.pop('modal_type', None)  # Fecha o modal após sucesso
                 st.rerun()
             else:
                 st.error("❌ Erro ao registrar entrada.")
@@ -114,8 +113,7 @@ def show_movimentacao_saida_insumo(item_id: int) -> None:
         with col1:
             local_origem = item.get('localizacao', 'Almoxarifado')
             st.text_input("Local de Origem (atual) *", value=local_origem, disabled=True)
-            # Buscar todas as obras (sem filtrar por status) para mostrar como opções de destino
-            obras_df = obras_manager.get_obras()
+            obras_df = obras_manager.get_obras({"status": "ativo"})
             obras_options = [""] + [f"{row['nome']} - {row['codigo']}" for _, row in obras_df.iterrows()]
             local_destino = st.selectbox("Local de Destino *", options=obras_options,
                                        help="Selecione a obra/departamento de destino")
@@ -335,18 +333,14 @@ def show_movimentacao_saida_equipamento_eletrico(item_id: int) -> None:
             local_origem = item.get('localizacao', 'Almoxarifado')
             st.text_input("Local de Origem (atual) *", value=local_origem, disabled=True)
             
-            # Buscar todas as obras (sem filtrar por status) para mostrar como opções de destino
-            obras_df = obras_manager.get_obras()
+            obras_df = obras_manager.get_obras({"status": "ativo"})
             obras_options = [""] + [f"{row['nome']} - {row['codigo']}" for _, row in obras_df.iterrows()]
             local_destino = st.selectbox("Local de Destino *", options=obras_options,
                                        help="Selecione a obra/departamento de destino")
         
         with col2:
             responsaveis_df = responsaveis_manager.get_responsaveis({"ativo": True})
-            if not responsaveis_df.empty:
-                responsaveis_options = [""] + [f"{row['nome']} - {row['cargo']}" for _, row in responsaveis_df.iterrows()]
-            else:
-                responsaveis_options = ["Nenhum responsável cadastrado"]
+            responsaveis_options = [""] + [f"{row['nome']} - {row['cargo']}" for _, row in responsaveis_df.iterrows()]
             responsavel_selecionado = st.selectbox("Responsável *", options=responsaveis_options)
         
         motivo = st.selectbox("Motivo (opcional)", ["", "Transferência", "Empréstimo", "Manutenção", "Perda"])
@@ -378,7 +372,6 @@ def show_movimentacao_saida_equipamento_eletrico(item_id: int) -> None:
             movimentacao_id = manager.create_movimentacao(data, usuario_id)
             if movimentacao_id:
                 st.success(f"✅ SAÍDA registrada com sucesso! (ID: {movimentacao_id})")
-                st.session_state.pop('modal_type_eletrico', None)  # Fecha o modal após sucesso
                 st.rerun()
             else:
                 st.error("❌ Erro ao registrar saída.")
@@ -444,10 +437,7 @@ def show_movimentacao_entrada_equipamento_manual(item_id: int) -> None:
         
         with col2:
             responsaveis_df = responsaveis_manager.get_responsaveis({"ativo": True})
-            if not responsaveis_df.empty:
-                responsaveis_options = [""] + [f"{row['nome']} - {row['cargo']}" for _, row in responsaveis_df.iterrows()]
-            else:
-                responsaveis_options = ["Nenhum responsável cadastrado"]
+            responsaveis_options = [""] + [f"{row['nome']} - {row['cargo']}" for _, row in responsaveis_df.iterrows()]
             responsavel_selecionado = st.selectbox("Responsável *", options=responsaveis_options)
         
         motivo = st.selectbox("Motivo (opcional)", ["", "Transferência", "Devolução", "Manutenção"])
@@ -520,18 +510,14 @@ def show_movimentacao_saida_equipamento_manual(item_id: int) -> None:
             local_origem = item.get('localizacao', 'Almoxarifado')
             st.text_input("Local de Origem (atual) *", value=local_origem, disabled=True)
             
-            # Buscar todas as obras (sem filtrar por status) para mostrar como opções de destino
-            obras_df = obras_manager.get_obras()
+            obras_df = obras_manager.get_obras({"status": "ativo"})
             obras_options = [""] + [f"{row['nome']} - {row['codigo']}" for _, row in obras_df.iterrows()]
             local_destino = st.selectbox("Local de Destino *", options=obras_options,
                                        help="Selecione a obra/departamento de destino")
         
         with col2:
             responsaveis_df = responsaveis_manager.get_responsaveis({"ativo": True})
-            if not responsaveis_df.empty:
-                responsaveis_options = [""] + [f"{row['nome']} - {row['cargo']}" for _, row in responsaveis_df.iterrows()]
-            else:
-                responsaveis_options = ["Nenhum responsável cadastrado"]
+            responsaveis_options = [""] + [f"{row['nome']} - {row['cargo']}" for _, row in responsaveis_df.iterrows()]
             responsavel_selecionado = st.selectbox("Responsável *", options=responsaveis_options)
         
         motivo = st.selectbox("Motivo (opcional)", ["", "Transferência", "Empréstimo", "Manutenção", "Perda"])
@@ -566,7 +552,6 @@ def show_movimentacao_saida_equipamento_manual(item_id: int) -> None:
             movimentacao_id = manager.create_movimentacao(data, usuario_id)
             if movimentacao_id:
                 st.success(f"✅ SAÍDA registrada com sucesso! (ID: {movimentacao_id})")
-                st.session_state.pop('modal_type_manual', None)  # Fecha o modal após sucesso
                 st.rerun()
             else:
                 st.error("❌ Erro ao registrar saída.")

@@ -99,27 +99,22 @@ class AuthenticationManager:
                 conn.rollback()
             return False, f"Erro ao criar usuário: {e}"
     
-    def authenticate_user(self, email: str, password: str) -> Optional[dict]:
-        """Autentica usuário"""
+    def authenticate_user(self, email: str, password: str):
+        """Autentica usuário - Retorna (success, message, user_data)"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            
             cursor.execute("""
                 SELECT id, nome, email, password_hash, perfil, ativo
                 FROM usuarios 
                 WHERE email = %s
             """, (email,))
-            
             user = cursor.fetchone()
             if not user:
-                return None
-            
-            user_id, nome, email, password_hash, perfil, ativo = user
-            
+                return False, "Usuário não encontrado", None
+            user_id, nome, email_db, password_hash, perfil, ativo = user
             if not ativo:
-                return None
-            
+                return False, "Usuário inativo", None
             if self.verify_password(password, password_hash):
                 # Atualiza último login
                 cursor.execute("""
@@ -128,22 +123,20 @@ class AuthenticationManager:
                     WHERE id = %s
                 """, (datetime.now(), user_id))
                 conn.commit()
-                
                 # Log de login
                 self.log_action(user_id, 'login', 'usuarios', user_id, 'Login realizado')
-                
-                return {
+                user_data = {
                     'id': user_id,
                     'nome': nome,
-                    'email': email,
+                    'email': email_db,
                     'perfil': perfil
                 }
-            
-            return None
-            
+                return True, "Login realizado com sucesso", user_data
+            else:
+                return False, "Senha incorreta", None
         except Exception as e:
             print(f"Erro na autenticação: {e}")
-            return None
+            return False, f"Erro na autenticação: {e}", None
     
     def change_password(self, user_id: int, old_password: str, new_password: str) -> Tuple[bool, str]:
         """Altera senha do usuário"""
