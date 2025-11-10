@@ -81,7 +81,6 @@ try:
     from modules.responsaveis import show_responsaveis_page
     from modules.logs_auditoria import show_logs_auditoria_page
     from modules.relatorios import show_relatorios_page
-    from modules.usuarios import show_usuarios_page
     from modules.configuracoes import show_configuracoes_page
     from modules.notifications import notificar_estoque_baixo, notificar_vencimento, notificar_vida_util
 except ImportError as e:
@@ -610,6 +609,7 @@ def main():
     elif selected_page == "Logs de Auditoria":
         show_logs_auditoria_page()
     elif selected_page == "Usuários":
+        from modules.usuarios import show_usuarios_page
         show_usuarios_page()
     elif selected_page == "Configurações":
         show_configuracoes_page()

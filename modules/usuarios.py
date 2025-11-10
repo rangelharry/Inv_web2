@@ -9,7 +9,6 @@ import pandas as pd  # type: ignore
 import bcrypt  # type: ignore
 from datetime import datetime, date  # type: ignore # noqa: F401
 from database.connection import db  # type: ignore
-from modules.auth import auth_manager  # type: ignore
 from typing import Any, Dict, List, Optional  # type: ignore
 
 class UsuariosManager:
@@ -45,6 +44,7 @@ class UsuariosManager:
             self.db.get_connection().commit()  # type: ignore
             
             # Log da ação
+            from modules.auth import auth_manager
             auth_manager.log_action(  # type: ignore
                 1, f"Criou usuário: {data['nome']} (ID: {usuario_id})",  # type: ignore
                 "Usuários", None  # type: ignore
@@ -212,6 +212,7 @@ class UsuariosManager:
             self.db.get_connection().commit()  # type: ignore
             
             # Log da ação
+            from modules.auth import auth_manager
             auth_manager.log_action(  # type: ignore
                 1, f"Desativou usuário: {nome} (ID: {usuario_id})",  # type: ignore
                 "Usuários", None  # type: ignore
@@ -295,6 +296,9 @@ def show_usuarios_page():
     
     st.title("👥 Gestão de Usuários")
     
+    # Importar auth_manager localmente para evitar erros de escopo
+    from modules.auth import auth_manager
+    
     user_data = st.session_state.user_data
     if not auth_manager.check_permission(user_data['perfil'], "read"):
         st.error("❌ Você não tem permissão para acessar esta página.")
@@ -363,6 +367,7 @@ def show_usuarios_page():
                 cols[5].write(str(row['ultimo_login'])[:10] if row['ultimo_login'] else 'Nunca')
                 
                 # Botões de ação
+                from modules.auth import auth_manager
                 if auth_manager.check_permission(user_data['perfil'], "update"):
                     if cols[6].button("✏️", key=f"edit_user_{row['id']}_{idx}", help="Editar usuário"):
                         st.session_state.editing_user = row['id']
@@ -401,28 +406,43 @@ def show_usuarios_page():
                     
                     # Lista de módulos disponíveis
                     modules_list = [
+                        ("dashboard", "Dashboard"),
+                        ("insumos", "Insumos"),
                         ("equipamentos_eletricos", "Equipamentos Elétricos"),
                         ("equipamentos_manuais", "Equipamentos Manuais"), 
-                        ("insumos", "Insumos"),
                         ("movimentacao", "Movimentação"),
-                        ("reservas", "Reservas"),
+                        ("obras", "Obras/Departamentos"),
+                        ("responsaveis", "Responsáveis"),
                         ("relatorios", "Relatórios"),
-                        ("dashboard", "Dashboard"),
-                        ("configuracoes", "Configurações"),
+                        ("logs", "Logs de Auditoria"),
                         ("usuarios", "Usuários"),
-                        ("backup", "Backup"),
-                        ("logs", "Logs de Auditoria")
+                        ("configuracoes", "Configurações"),
+                        ("qr_codes", "QR/Códigos de Barras"),
+                        ("reservas", "Reservas"),
+                        ("manutencao", "Manutenção Preventiva"),
+                        ("dashboard_exec", "Dashboard Executivo"),
+                        ("localizacao", "Localização"),
+                        ("financeiro", "Gestão Financeira"),
+                        ("analise", "Análise Preditiva"),
+                        ("subcontratados", "Gestão de Subcontratados"),
+                        ("relatorios_custom", "Relatórios Customizáveis"),
+                        ("metricas", "Métricas Performance"),
+                        ("backup", "Backup e Recovery"),
+                        ("lgpd", "LGPD/Compliance"),
+                        ("orcamentos", "Orçamentos e Cotações"),
+                        ("faturamento", "Sistema de Faturamento"),
+                        ("integracao", "Integração ERP/SAP")
                     ]
                     
                     st.write("Selecione os módulos que o usuário poderá acessar:")
                     edit_permissions = {}
                     
                     # Criar checkboxes em colunas
-                    col_perm1, col_perm2, col_perm3 = st.columns(3)
+                    col_perm1, col_perm2, col_perm3, col_perm4 = st.columns(4)
                     
                     for idx, (module_key, module_name) in enumerate(modules_list):
                         # Distribuir entre as colunas
-                        col = [col_perm1, col_perm2, col_perm3][idx % 3]
+                        col = [col_perm1, col_perm2, col_perm3, col_perm4][idx % 4]
                         with col:
                             # Verificar se o usuário tem acesso atualmente a este módulo
                             has_access = current_permissions.get(module_key, False)
@@ -472,6 +492,7 @@ def show_usuarios_page():
                                 # Executar atualização
                                 if manager.update_usuario(user_to_edit['id'], update_data):  # type: ignore
                                     # Atualizar permissões de módulos
+                                    from modules.auth import auth_manager
                                     auth_manager.update_user_module_permissions(user_to_edit['id'], edit_permissions)
                                     
                                     st.session_state.editing_user = None  # type: ignore
@@ -491,6 +512,7 @@ def show_usuarios_page():
                         st.code(f"Hash atual: {current_hash}")  # type: ignore
             
             # Ações em lote (apenas para admin)
+            from modules.auth import auth_manager
             if auth_manager.check_permission(user_data['perfil'], "delete"):
                 st.subheader("Ações")
                 
@@ -520,6 +542,7 @@ def show_usuarios_page():
             st.info("📭 Nenhum usuário encontrado com os filtros aplicados.")
     
     with tab2:
+        from modules.auth import auth_manager
         if not auth_manager.check_permission(user_data['perfil'], "create"):
             st.error("❌ Você não tem permissão para adicionar usuários.")
             return
@@ -559,35 +582,50 @@ def show_usuarios_page():
                 ("insumos", "📦 Insumos", False),
                 ("equipamentos_eletricos", "⚡ Equipamentos Elétricos", False),
                 ("equipamentos_manuais", "🔧 Equipamentos Manuais", False),
-                ("movimentacoes", "🔄 Movimentações", False),
-                ("obras_departamentos", "🏗️ Obras/Departamentos", False),
+                ("movimentacao", "🔄 Movimentações", False),
+                ("obras", "🏗️ Obras/Departamentos", False),
                 ("responsaveis", "👥 Responsáveis", False),
                 ("relatorios", "📊 Relatórios", False),
-                ("logs_auditoria", "📋 Logs de Auditoria", False),
+                ("logs", "📋 Logs de Auditoria", False),
                 ("usuarios", "👤 Usuários", False),
-                ("configuracoes", "⚙️ Configurações", False)
+                ("configuracoes", "⚙️ Configurações", False),
+                ("qr_codes", "📱 QR/Códigos de Barras", False),
+                ("reservas", "📅 Reservas", False),
+                ("manutencao", "🔧 Manutenção Preventiva", False),
+                ("dashboard_exec", "📈 Dashboard Executivo", False),
+                ("localizacao", "📍 Localização", False),
+                ("financeiro", "💰 Gestão Financeira", False),
+                ("analise", "🔮 Análise Preditiva", False),
+                ("subcontratados", "🏢 Gestão de Subcontratados", False),
+                ("relatorios_custom", "📋 Relatórios Customizáveis", False),
+                ("metricas", "⚡ Métricas Performance", False),
+                ("backup", "☁️ Backup e Recovery", False),
+                ("lgpd", "🛡️ LGPD/Compliance", False),
+                ("orcamentos", "🧮 Orçamentos e Cotações", False),
+                ("faturamento", "🧾 Sistema de Faturamento", False),
+                ("integracao", "🔗 Integração ERP/SAP", False)
             ]
             
-            col_perm1, col_perm2 = st.columns(2)
+            col_perm1, col_perm2, col_perm3 = st.columns(3)
             permissions = {}
             
             for i, (modulo_id, modulo_nome, default_value) in enumerate(modulos_disponiveis):
-                col = col_perm1 if i % 2 == 0 else col_perm2
+                col = [col_perm1, col_perm2, col_perm3][i % 3]
                 
                 with col:
                     if modulo_id == "dashboard":
                         st.checkbox(modulo_nome, value=True, disabled=True, key=f"perm_{modulo_id}")
                         permissions[modulo_id] = True
-                    elif modulo_id in ["usuarios", "configuracoes"] and perfil != "admin":
+                    elif modulo_id in ["usuarios", "configuracoes", "backup", "lgpd", "integracao"] and perfil != "admin":
                         st.checkbox(modulo_nome, value=False, disabled=True, key=f"perm_{modulo_id}")
                         permissions[modulo_id] = False
                     else:
                         # Definir valores padrão baseados no perfil selecionado
                         if perfil == "admin":
                             default_perm = True
-                        elif perfil == "gestor" and modulo_id in ["insumos", "equipamentos_eletricos", "equipamentos_manuais", "movimentacoes", "obras_departamentos", "responsaveis", "relatorios"]:
+                        elif perfil == "gestor" and modulo_id in ["insumos", "equipamentos_eletricos", "equipamentos_manuais", "movimentacao", "obras", "responsaveis", "relatorios", "qr_codes", "reservas", "manutencao", "localizacao", "financeiro", "relatorios_custom", "metricas"]:
                             default_perm = True
-                        elif perfil == "usuario" and modulo_id in ["insumos", "equipamentos_eletricos", "equipamentos_manuais"]:
+                        elif perfil == "usuario" and modulo_id in ["insumos", "equipamentos_eletricos", "equipamentos_manuais", "relatorios"]:
                             default_perm = True
                         else:
                             default_perm = False

@@ -110,6 +110,39 @@ class AuthenticationManager:
         except:
             return False
     
+    def get_user_by_id(self, user_id: int) -> Optional[dict]:
+        """Busca usuário por ID"""
+        try:
+            # Converter para int nativo do Python
+            user_id = int(user_id)
+            
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, nome, email, perfil, ativo 
+                FROM usuarios 
+                WHERE id = %s
+            """, (user_id,))
+            
+            result = cursor.fetchone()
+            if result:
+                if isinstance(result, dict):
+                    return result
+                else:
+                    return {
+                        'id': result[0],
+                        'nome': result[1], 
+                        'email': result[2],
+                        'perfil': result[3],
+                        'ativo': result[4]
+                    }
+            return None
+            
+        except Exception as e:
+            print(f"Erro ao buscar usuário por ID: {e}")
+            return None
+    
     def create_session(self, user_id: int) -> str:
         """Cria sessão para o usuário e retorna token"""
         try:
@@ -197,6 +230,9 @@ class AuthenticationManager:
     def get_user_module_permissions(self, user_id: int) -> dict[str, bool]:
         """Obtém permissões de módulos do usuário"""
         try:
+            # Converter para int nativo do Python para evitar problemas com numpy
+            user_id = int(user_id)
+            
             conn = self.get_connection()
             cursor = conn.cursor()
             
@@ -242,13 +278,28 @@ class AuthenticationManager:
                     'insumos': True,
                     'equipamentos_eletricos': True,
                     'equipamentos_manuais': True,
-                    'movimentacoes': True,
-                    'obras_departamentos': True,
+                    'movimentacao': True,
+                    'obras': True,
                     'responsaveis': True,
                     'relatorios': True,
-                    'logs_auditoria': True,
+                    'logs': True,
                     'usuarios': True,
-                    'configuracoes': True
+                    'configuracoes': True,
+                    'qr_codes': True,
+                    'reservas': True,
+                    'manutencao': True,
+                    'dashboard_exec': True,
+                    'localizacao': True,
+                    'financeiro': True,
+                    'analise': True,
+                    'subcontratados': True,
+                    'relatorios_custom': True,
+                    'metricas': True,
+                    'backup': True,
+                    'lgpd': True,
+                    'orcamentos': True,
+                    'faturamento': True,
+                    'integracao': True
                 }
             elif perfil == 'gestor':
                 # Gestor tem acesso limitado
@@ -257,10 +308,17 @@ class AuthenticationManager:
                     'insumos': True,
                     'equipamentos_eletricos': True,
                     'equipamentos_manuais': True,
-                    'movimentacoes': True,
-                    'obras_departamentos': True,
+                    'movimentacao': True,
+                    'obras': True,
                     'responsaveis': True,
-                    'relatorios': True
+                    'relatorios': True,
+                    'qr_codes': True,
+                    'reservas': True,
+                    'manutencao': True,
+                    'localizacao': True,
+                    'financeiro': True,
+                    'relatorios_custom': True,
+                    'metricas': True
                 }
             else:
                 # Usuário normal tem acesso básico
@@ -268,7 +326,8 @@ class AuthenticationManager:
                     'dashboard': True,
                     'insumos': True,
                     'equipamentos_eletricos': True,
-                    'equipamentos_manuais': True
+                    'equipamentos_manuais': True,
+                    'relatorios': True
                 }
                 
         except Exception as e:
