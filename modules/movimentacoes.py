@@ -681,8 +681,9 @@ def show_movimentacoes_page():
                     tipo_mov = row.get('tipo_movimentacao', 'saida')
                     
                     # Só mostra botão de devolução para saídas que não são devoluções
+                    motivo = row.get('motivo') or ''  # Garante que não seja None
                     if (tipo_mov == 'saida' and 
-                        not row.get('motivo', '').startswith('DEVOLUÇÃO') and
+                        not motivo.startswith('DEVOLUÇÃO') and
                         auth_manager.check_permission(user_data['perfil'], "update")):
                         
                         if st.button("🔄", key=f"devolver_{mov_id}_{idx}", 
