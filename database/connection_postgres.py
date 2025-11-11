@@ -240,8 +240,36 @@ class DatabaseConnection:
             data_movimentacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             data_previsao_retorno DATE,
             status TEXT DEFAULT 'concluida', -- 'pendente', 'concluida', 'cancelada'
-            usuario_id INTEGER NOT NULL REFERENCES usuarios(id)
+            usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+            movimentacao_origem_id INTEGER REFERENCES movimentacoes(id), -- para devoluções/transferências
+            tipo_movimentacao TEXT DEFAULT 'saida' -- 'entrada', 'saida'
         )
+        """)
+        
+        # Adicionar coluna movimentacao_origem_id se não existir (migração)
+        cursor.execute("""
+        DO $$ 
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'movimentacoes' AND column_name = 'movimentacao_origem_id'
+            ) THEN
+                ALTER TABLE movimentacoes ADD COLUMN movimentacao_origem_id INTEGER REFERENCES movimentacoes(id);
+            END IF;
+        END $$;
+        """)
+        
+        # Adicionar coluna tipo_movimentacao se não existir (migração)
+        cursor.execute("""
+        DO $$ 
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'movimentacoes' AND column_name = 'tipo_movimentacao'
+            ) THEN
+                ALTER TABLE movimentacoes ADD COLUMN tipo_movimentacao TEXT DEFAULT 'saida';
+            END IF;
+        END $$;
         """)
         
         # Tabela de alertas

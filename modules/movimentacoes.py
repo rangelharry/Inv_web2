@@ -294,6 +294,283 @@ class MovimentacoesManager:
             }
         except:
             return {'total_mes': 0, 'entradas_mes': 0, 'saidas_mes': 0}
+    
+    def get_ultima_movimentacao_equipamento(self, equipamento_id: int, tipo_equipamento: str) -> dict[str, Any] | None:
+        """Busca a última movimentação de um equipamento específico"""
+        try:
+            conn = self.db.get_connection()
+            if not conn:
+                return None
+                
+            cursor = conn.cursor()
+            
+            # Buscar última movimentação do equipamento
+            cursor.execute("""
+                SELECT 
+                    tipo_movimentacao, 
+                    local_origem, 
+                    local_destino,
+                    data_movimentacao,
+                    motivo
+                FROM movimentacoes 
+                WHERE item_id = %s AND tipo = %s
+                ORDER BY data_movimentacao DESC, id DESC
+                LIMIT 1
+            """, (equipamento_id, f'Equipamento {tipo_equipamento.capitalize()}'))
+            
+            result = cursor.fetchone()
+            
+            if result:
+                if isinstance(result, dict):
+                    return result
+                else:
+                    columns = [desc[0] for desc in cursor.description]
+                    return dict(zip(columns, result))
+            
+            return None
+            
+        except Exception as e:
+            st.error(f"Erro ao buscar última movimentação: {e}")
+            return None
+    
+    def create_devolucao(self, movimentacao_original_id: int, tipo_devolucao: str, 
+                        quantidade_devolvida: int = None, motivo: str = "", 
+                        nova_obra_id: int = None, usuario_id: int = None) -> tuple[bool, str]:
+        """
+        Cria devolução de movimentação
+        
+        Args:
+            movimentacao_original_id: ID da movimentação original
+            tipo_devolucao: 'total', 'parcial', 'transferencia'
+            quantidade_devolvida: Quantidade devolvida (para insumos)
+            motivo: Motivo da devolução
+            nova_obra_id: ID da nova obra (para transferências)
+            usuario_id: ID do usuário que está fazendo a devolução
+        """
+        try:
+            conn = self.db.get_connection()
+            if not conn:
+                return False, "Erro de conexão com o banco"
+                
+            cursor = conn.cursor()
+            
+            # 1. Buscar movimentação original
+            cursor.execute("""
+                SELECT * FROM movimentacoes WHERE id = %s
+            """, (movimentacao_original_id,))
+            
+            mov_original = cursor.fetchone()
+            if not mov_original:
+                return False, "Movimentação original não encontrada"
+            
+            # Converter para dict se necessário
+            if not isinstance(mov_original, dict):
+                columns = [desc[0] for desc in cursor.description]
+                mov_original = dict(zip(columns, mov_original))
+            
+            # 2. Validações
+            if mov_original['tipo_movimentacao'] != 'saida':
+                return False, "Só é possível devolver movimentações de saída"
+            
+            # 3. Determinar quantidade a devolver
+            qtd_original = mov_original.get('quantidade', 1)
+            if tipo_devolucao == 'total' or mov_original['tipo'] not in ['Insumo']:
+                qtd_devolver = qtd_original
+            else:  # parcial para insumos
+                qtd_devolver = quantidade_devolvida or qtd_original
+                if qtd_devolver > qtd_original:
+                    return False, f"Quantidade inválida. Original: {qtd_original}, solicitado: {qtd_devolver}"
+            
+            # 4. Determinar destino
+            if tipo_devolucao == 'transferencia' and nova_obra_id:
+                local_destino = f"Obra ID: {nova_obra_id}"
+            else:
+                local_destino = mov_original.get('local_origem', 'Estoque')
+            
+            # 5. Criar registro de devolução
+            dados_devolucao = {
+                'item_id': mov_original['item_id'],
+                'tipo': mov_original['tipo'],
+                'tipo_item': mov_original.get('tipo_item', ''),
+                'tipo_movimentacao': 'entrada' if tipo_devolucao != 'transferencia' else 'saida',
+                'quantidade': qtd_devolver,
+                'local_origem': mov_original.get('local_destino', ''),
+                'local_destino': local_destino,
+                'motivo': f"DEVOLUÇÃO {tipo_devolucao.upper()}: {motivo}",
+                'observacoes': f"Devolução da movimentação #{movimentacao_original_id}",
+                'movimentacao_origem_id': movimentacao_original_id,
+                'obra_origem_id': mov_original.get('obra_destino_id'),
+                'obra_destino_id': nova_obra_id if tipo_devolucao == 'transferencia' else mov_original.get('obra_origem_id'),
+                'responsavel_origem_id': mov_original.get('responsavel_destino_id'),
+                'responsavel_destino_id': mov_original.get('responsavel_origem_id'),
+                'valor_unitario': mov_original.get('valor_unitario')
+            }
+            
+            # 6. Registrar devolução
+            mov_id = self.create_movimentacao(dados_devolucao, usuario_id)
+            if not mov_id:
+                return False, "Erro ao criar registro de devolução"
+            
+            # 7. Atualizar estoques/disponibilidade
+            resultado_estoque = self._atualizar_estoque_devolucao(
+                mov_original, qtd_devolver, tipo_devolucao, nova_obra_id
+            )
+            
+            if not resultado_estoque[0]:
+                # Reverter criação da movimentação
+                cursor.execute("DELETE FROM movimentacoes WHERE id = %s", (mov_id,))
+                conn.commit()
+                return False, f"Erro ao atualizar estoque: {resultado_estoque[1]}"
+            
+            conn.commit()
+            return True, f"Devolução registrada com sucesso! ID: {mov_id}"
+            
+        except Exception as e:
+            try:
+                conn.rollback()
+            except:
+                pass
+            return False, f"Erro ao processar devolução: {str(e)}"
+    
+    def _atualizar_estoque_devolucao(self, mov_original: dict, quantidade: int, 
+                                   tipo_devolucao: str, nova_obra_id: int = None) -> tuple[bool, str]:
+        """Atualiza estoque após devolução"""
+        try:
+            if mov_original['tipo'] == 'Insumo' and tipo_devolucao != 'transferencia':
+                # Devolver ao estoque
+                from modules.insumos import InsumosManager
+                insumos_manager = InsumosManager()
+                
+                # Aumentar estoque
+                conn = self.db.get_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    UPDATE insumos 
+                    SET quantidade_atual = quantidade_atual + %s 
+                    WHERE id = %s
+                """, (quantidade, mov_original['item_id']))
+                
+                return True, "Estoque atualizado"
+            
+            # Para equipamentos ou transferências, não há atualização de estoque
+            # A disponibilidade é determinada pela última movimentação
+            return True, "Disponibilidade atualizada"
+            
+        except Exception as e:
+            return False, f"Erro ao atualizar estoque: {str(e)}"
+
+def _show_modal_devolucao(mov_id: int, row: dict, manager: MovimentacoesManager, user_data: dict):
+    """Modal para devolução/transferência"""
+    
+    st.markdown(f"### Movimentação Original")
+    st.info(f"📦 **{row['item_nome']}** | Quantidade: **{row.get('quantidade', 1)}** | "
+            f"Origem: **{row.get('obra_origem', 'N/A')}** → Destino: **{row.get('obra_destino', 'N/A')}**")
+    
+    # Tipo de operação
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("🔄 Devolução Total", key=f"dev_total_{mov_id}", use_container_width=True):
+            st.session_state[f'tipo_operacao_{mov_id}'] = 'total'
+            st.rerun()
+    
+    with col2:
+        # Só para insumos
+        if row.get('tipo') == 'Insumo':
+            if st.button("📦 Devolução Parcial", key=f"dev_parcial_{mov_id}", use_container_width=True):
+                st.session_state[f'tipo_operacao_{mov_id}'] = 'parcial'
+                st.rerun()
+        else:
+            st.write("—")
+    
+    with col3:
+        if st.button("🔀 Transferir para Obra", key=f"transferir_{mov_id}", use_container_width=True):
+            st.session_state[f'tipo_operacao_{mov_id}'] = 'transferencia'
+            st.rerun()
+    
+    # Formulário baseado no tipo selecionado
+    tipo_operacao = st.session_state.get(f'tipo_operacao_{mov_id}')
+    
+    if tipo_operacao:
+        st.markdown(f"#### {tipo_operacao.title()}")
+        
+        with st.form(f"form_devolucao_{mov_id}"):
+            quantidade_devolver = None
+            nova_obra_id = None
+            
+            if tipo_operacao == 'parcial':
+                st.markdown("**Quantidade a Devolver:**")
+                quantidade_original = row.get('quantidade', 1)
+                quantidade_devolver = st.number_input(
+                    "Quantidade", 
+                    min_value=1, 
+                    max_value=int(quantidade_original), 
+                    value=int(quantidade_original//2),
+                    key=f"qtd_dev_{mov_id}"
+                )
+                st.caption(f"Original: {quantidade_original} | Restante na obra: {quantidade_original - quantidade_devolver}")
+            
+            elif tipo_operacao == 'transferencia':
+                from modules.obras import ObrasManager
+                obras_manager = ObrasManager()
+                obras_df = obras_manager.get_obras()
+                
+                if not obras_df.empty:
+                    obras_options = [f"{obra['nome']} - {obra['codigo']}" for _, obra in obras_df.iterrows()]
+                    obra_selecionada = st.selectbox("Nova Obra de Destino", obras_options, key=f"obra_dest_{mov_id}")
+                    
+                    if obra_selecionada:
+                        for _, obra in obras_df.iterrows():
+                            if f"{obra['nome']} - {obra['codigo']}" == obra_selecionada:
+                                nova_obra_id = obra['id']
+                                break
+                
+                if row.get('tipo') == 'Insumo':
+                    quantidade_original = row.get('quantidade', 1)
+                    quantidade_devolver = st.number_input(
+                        "Quantidade a Transferir", 
+                        min_value=1, 
+                        max_value=int(quantidade_original), 
+                        value=int(quantidade_original),
+                        key=f"qtd_transf_{mov_id}"
+                    )
+            
+            motivo = st.text_area(
+                "Motivo da operação", 
+                placeholder="Descreva o motivo da devolução/transferência...",
+                key=f"motivo_dev_{mov_id}"
+            )
+            
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.form_submit_button("✅ Confirmar", type="primary"):
+                    # Executar operação
+                    sucesso, mensagem = manager.create_devolucao(
+                        movimentacao_original_id=mov_id,
+                        tipo_devolucao=tipo_operacao,
+                        quantidade_devolvida=quantidade_devolver,
+                        motivo=motivo,
+                        nova_obra_id=nova_obra_id,
+                        usuario_id=user_data['id']
+                    )
+                    
+                    if sucesso:
+                        st.success(mensagem)
+                        # Limpar estado
+                        for key in list(st.session_state.keys()):
+                            if str(mov_id) in key and ('modal_devolucao' in key or 'tipo_operacao' in key):
+                                del st.session_state[key]
+                        st.rerun()
+                    else:
+                        st.error(mensagem)
+            
+            with col_btn2:
+                if st.form_submit_button("❌ Cancelar"):
+                    # Limpar estado
+                    for key in list(st.session_state.keys()):
+                        if str(mov_id) in key and ('modal_devolucao' in key or 'tipo_operacao' in key):
+                            del st.session_state[key]
+                    st.rerun()
 
 # Função principal da página
 def show_movimentacoes_page():
@@ -344,22 +621,83 @@ def show_movimentacoes_page():
         # Buscar movimentações
         df = manager.get_movimentacoes(filters)  # type: ignore
         if not df.empty:
-            st.dataframe(  # type: ignore
-                df[['data_movimentacao', 'tipo', 'item_nome',
-                   'quantidade', 'obra_origem', 'obra_destino', 'motivo', 'usuario_nome']],
-                column_config={
-                    'data_movimentacao': 'Data/Hora',
-                    'tipo': 'Tipo',
-                    'item_nome': 'Item',
-                    'quantidade': 'Quantidade',
-                    'obra_origem': 'Origem',
-                    'obra_destino': 'Destino',
-                    'motivo': 'Motivo',
-                    'usuario_nome': 'Usuário'
-                },
-                width='stretch',
-                hide_index=True
-            )
+            st.info(f"📋 {len(df)} movimentações encontradas")
+            
+            # Cabeçalho da tabela
+            cols = st.columns([2, 1.5, 3, 1, 2, 2, 2, 1.5])
+            with cols[0]:
+                st.markdown("**Data/Hora**")
+            with cols[1]:
+                st.markdown("**Tipo**")
+            with cols[2]:
+                st.markdown("**Item**")
+            with cols[3]:
+                st.markdown("**Qtd**")
+            with cols[4]:
+                st.markdown("**Origem**")
+            with cols[5]:
+                st.markdown("**Destino**")
+            with cols[6]:
+                st.markdown("**Motivo**")
+            with cols[7]:
+                st.markdown("**Ações**")
+            
+            st.divider()
+            
+            # Iterar sobre as movimentações
+            for idx, row in df.iterrows():
+                cols = st.columns([2, 1.5, 3, 1, 2, 2, 2, 1.5])
+                
+                with cols[0]:
+                    data_str = str(row['data_movimentacao'])[:16] if row['data_movimentacao'] else 'N/A'
+                    st.write(data_str)
+                    
+                with cols[1]:
+                    tipo_icon = "📥" if row.get('tipo_movimentacao') == 'entrada' else "📤"
+                    st.write(f"{tipo_icon} {row['tipo']}")
+                    
+                with cols[2]:
+                    st.write(f"**{row['item_nome']}**")
+                    
+                with cols[3]:
+                    qtd = row.get('quantidade', 1)
+                    st.write(f"{qtd}")
+                    
+                with cols[4]:
+                    origem = row.get('obra_origem', 'N/A')
+                    st.write(origem[:20] + "..." if len(str(origem)) > 20 else str(origem))
+                    
+                with cols[5]:
+                    destino = row.get('obra_destino', 'N/A')
+                    st.write(destino[:20] + "..." if len(str(destino)) > 20 else str(destino))
+                    
+                with cols[6]:
+                    motivo = row.get('motivo', 'N/A')
+                    st.write(motivo[:15] + "..." if len(str(motivo)) > 15 else str(motivo))
+                    
+                with cols[7]:
+                    # Botões de ação
+                    mov_id = row.get('id')
+                    tipo_mov = row.get('tipo_movimentacao', 'saida')
+                    
+                    # Só mostra botão de devolução para saídas que não são devoluções
+                    if (tipo_mov == 'saida' and 
+                        not row.get('motivo', '').startswith('DEVOLUÇÃO') and
+                        auth_manager.check_permission(user_data['perfil'], "update")):
+                        
+                        if st.button("🔄", key=f"devolver_{mov_id}_{idx}", 
+                                   help="Devolver/Transferir", use_container_width=True):
+                            st.session_state[f'modal_devolucao_{mov_id}'] = True
+                            st.rerun()
+                    else:
+                        st.write("—")
+                
+                # Modal de devolução
+                if st.session_state.get(f'modal_devolucao_{mov_id}', False):
+                    with st.expander(f"🔄 Devolução/Transferência - {row['item_nome']}", expanded=True):
+                        _show_modal_devolucao(mov_id, row, manager, user_data)
+                
+                st.divider()
         else:
             st.info("📭 Nenhuma movimentação encontrada com os filtros aplicados.")
 

@@ -1,6 +1,65 @@
 import streamlit as st
 from typing import Any
 
+def verificar_disponibilidade_insumo(item_id: int, quantidade_solicitada: int) -> tuple[bool, str]:
+    """Verifica se há estoque suficiente para o insumo"""
+    from modules.insumos import InsumosManager
+    
+    try:
+        insumos_manager = InsumosManager()
+        insumos = insumos_manager.get_insumos()
+        item = next((i for i in insumos if i['id'] == item_id), None)
+        
+        if not item:
+            return False, "❌ Item não encontrado."
+        
+        estoque_atual = item.get('quantidade_atual', 0)
+        
+        if estoque_atual <= 0:
+            return False, f"❌ **SEM ESTOQUE**: O item '{item['descricao']}' não possui estoque disponível."
+        
+        if quantidade_solicitada > estoque_atual:
+            return False, f"❌ **ESTOQUE INSUFICIENTE**: Solicitado {quantidade_solicitada}, disponível apenas {estoque_atual} {item.get('unidade', 'un')}."
+        
+        return True, f"✅ Estoque suficiente: {estoque_atual} {item.get('unidade', 'un')} disponível."
+        
+    except Exception as e:
+        return False, f"❌ Erro ao verificar estoque: {str(e)}"
+
+def verificar_disponibilidade_equipamento(item_id: int, tipo: str) -> tuple[bool, str]:
+    """Verifica se o equipamento está disponível para movimentação"""
+    from modules.movimentacoes import MovimentacoesManager
+    
+    try:
+        movimentacoes_manager = MovimentacoesManager()
+        
+        # Buscar última movimentação do equipamento
+        if tipo == 'eletrico':
+            from modules.equipamentos_eletricos import EquipamentosEletricosManager
+            eq_manager = EquipamentosEletricosManager()
+            equipamentos = eq_manager.get_equipamentos()
+            item = dict(equipamentos[equipamentos['id'] == item_id].iloc[0].to_dict()) if not equipamentos.empty and len(equipamentos[equipamentos['id'] == item_id]) > 0 else None
+        else:  # manual
+            from modules.equipamentos_manuais import EquipamentosManuaisManager
+            eq_manager = EquipamentosManuaisManager()
+            equipamentos = eq_manager.get_equipamentos()
+            item = dict(equipamentos[equipamentos['id'] == item_id].iloc[0].to_dict()) if not equipamentos.empty and len(equipamentos[equipamentos['id'] == item_id]) > 0 else None
+        
+        if not item:
+            return False, "❌ Equipamento não encontrado."
+        
+        # Verificar se está em uso analisando as movimentações
+        ultima_movimentacao = movimentacoes_manager.get_ultima_movimentacao_equipamento(item_id, tipo)
+        
+        if ultima_movimentacao and ultima_movimentacao.get('tipo_movimentacao') == 'saida':
+            obra_atual = ultima_movimentacao.get('local_destino', 'Local não informado')
+            return False, f"❌ **EQUIPAMENTO EM USO**: O equipamento '{item.get('nome', 'N/A')}' está atualmente em uso na obra: **{obra_atual}**."
+        
+        return True, f"✅ Equipamento '{item.get('nome', 'N/A')}' disponível para movimentação."
+        
+    except Exception as e:
+        return False, f"❌ Erro ao verificar disponibilidade: {str(e)}"
+
 def show_movimentacao_entrada_insumo(item_id: int) -> None:
     """Modal específico para ENTRADA de insumos"""
     from modules.movimentacoes import MovimentacoesManager
@@ -105,10 +164,23 @@ def show_movimentacao_saida_insumo(item_id: int) -> None:
     
     manager = MovimentacoesManager()
     st.markdown(f"## SAÍDA: {item['descricao']} ({item['codigo']})")
+    
+    # **VERIFICAÇÃO DE ESTOQUE ANTES DE MOSTRAR O FORMULÁRIO**
+    estoque_atual = item.get('quantidade_atual', 0)
+    if estoque_atual <= 0:
+        st.error(f"❌ **SEM ESTOQUE DISPONÍVEL**")
+        st.warning(f"O item '{item['descricao']}' não possui estoque para movimentação de saída.")
+        st.info("💡 Para registrar entrada de estoque, use o botão 'ENTRADA' deste item.")
+        return
+    
     st.info(f"📦 Estoque atual: {item['quantidade_atual']} {item['unidade']}")
     
     with st.form("saida_insumo"):
-        quantidade = st.number_input("Quantidade *", min_value=1, value=1, max_value=int(item['quantidade_atual']))
+        quantidade = st.number_input("Quantidade *", min_value=1, value=1, max_value=int(estoque_atual))
+        
+        # **VALIDAÇÃO EM TEMPO REAL DA QUANTIDADE**
+        if quantidade > estoque_atual:
+            st.error(f"❌ Quantidade solicitada ({quantidade}) excede o estoque disponível ({estoque_atual})!")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -146,14 +218,17 @@ def show_movimentacao_saida_insumo(item_id: int) -> None:
 
         submitted = st.form_submit_button("💾 Registrar SAÍDA", type="primary")
         if submitted:
+            # **VALIDAÇÃO FINAL DE ESTOQUE**
+            disponivel, msg_estoque = verificar_disponibilidade_insumo(item_id, quantidade)
+            if not disponivel:
+                st.error(msg_estoque)
+                return
+            
             if not local_destino.strip():
                 st.error("❌ Local de Destino é obrigatório!")
                 return
             if not responsavel_selecionado.strip():
                 st.error("❌ Responsável é obrigatório!")
-                return
-            if quantidade > item['quantidade_atual']:
-                st.error(f"❌ Quantidade insuficiente! Estoque atual: {item['quantidade_atual']}")
                 return
 
             data: dict[str, Any] = {
@@ -327,6 +402,15 @@ def show_movimentacao_saida_equipamento_eletrico(item_id: int) -> None:
     
     manager = MovimentacoesManager()
     st.markdown(f"## SAÍDA: {item['nome']} ({item['codigo']})")
+    
+    # **VERIFICAÇÃO DE DISPONIBILIDADE ANTES DE MOSTRAR O FORMULÁRIO**
+    disponivel, msg_disponibilidade = verificar_disponibilidade_equipamento(item_id, 'eletrico')
+    if not disponivel:
+        st.error(msg_disponibilidade)
+        st.info("💡 Para registrar retorno à disponibilidade, use o botão 'ENTRADA' deste equipamento.")
+        return
+    
+    st.success(msg_disponibilidade)
     st.info(f"📍 Localização atual: {item['localizacao']} | Status: {item['status']}")
     
     with st.form("saida_eletrico"):
@@ -509,6 +593,15 @@ def show_movimentacao_saida_equipamento_manual(item_id: int) -> None:
     
     manager = MovimentacoesManager()
     st.markdown(f"## SAÍDA: {item['nome']} ({item['codigo']})")
+    
+    # **VERIFICAÇÃO DE DISPONIBILIDADE ANTES DE MOSTRAR O FORMULÁRIO**
+    disponivel, msg_disponibilidade = verificar_disponibilidade_equipamento(item_id, 'manual')
+    if not disponivel:
+        st.error(msg_disponibilidade)
+        st.info("💡 Para registrar retorno à disponibilidade, use o botão 'ENTRADA' deste equipamento.")
+        return
+    
+    st.success(msg_disponibilidade)
     st.info(f"📍 Localização atual: {item['localizacao']} | Status: {item['status']}")
     
     with st.form("saida_manual"):
