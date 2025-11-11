@@ -41,12 +41,10 @@ class InsumosManager:
             ORDER BY nome
             """, (tipo,))
             
-            # Verificação segura do cursor.description
-            if cursor.description:
-                desc_names = [desc[0] for desc in cursor.description]
-                return [dict(zip(desc_names, row)) for row in cursor.fetchall()]
-            else:
-                return []
+            # Como o PostgreSQL retorna RealDictRow (já é dicionário), 
+            # não precisamos fazer dict(zip())
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows] if rows else []
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
             try:
