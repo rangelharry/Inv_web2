@@ -498,7 +498,22 @@ def show_equipamentos_eletricos_page():
                         with col_ed2:
                             novo_status = st.selectbox("Status:", manager.get_status_options(), index=manager.get_status_options().index(row['status']) if row['status'] in manager.get_status_options() else 0, key=f"status_eq_{row['id']}")
                             nova_localizacao = st.text_input("Localização:", value=row['localizacao'], key=f"localizacao_eq_{row['id']}")
-                            novo_valor_compra = st.number_input("Valor Compra:", min_value=0.0, value=float(row['valor_compra']), key=f"valorcompra_eq_{row['id']}")
+                            # Conversão segura para evitar TypeError quando valor_compra for None, string vazia
+                            valor_raw = row.get('valor_compra')
+                            try:
+                                if valor_raw is None or str(valor_raw).strip() == '':
+                                    default_val = 0.0
+                                else:
+                                    # limpar símbolos não numéricos, trocar vírgula por ponto
+                                    import re
+                                    s = str(valor_raw)
+                                    s = re.sub(r'[^0-9,\.-]', '', s)
+                                    s = s.replace(',', '.')
+                                    default_val = float(s)
+                            except Exception:
+                                default_val = 0.0
+
+                            novo_valor_compra = st.number_input("Valor Compra:", min_value=0.0, value=default_val, key=f"valorcompra_eq_{row['id']}")
                             novas_observacoes = st.text_area("Observações:", value=row['observacoes'], key=f"obs_eq_{row['id']}")
 
                         col_btn1, col_btn2 = st.columns(2)

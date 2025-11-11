@@ -20,7 +20,15 @@ class GestaoFinanceiraManager:
             
             resultado = cursor.fetchone()
             if resultado and resultado['valor_compra'] and resultado['vida_util_anos']:
-                valor_compra = float(resultado['valor_compra'])
+                # Conversão segura para evitar TypeError
+                try:
+                    valor_raw = resultado['valor_compra']
+                    if valor_raw is None:
+                        return 0.0
+                    valor_compra = float(str(valor_raw).replace(',', '.'))
+                except (ValueError, TypeError):
+                    return 0.0
+                    
                 vida_util_anos = int(resultado['vida_util_anos'])
                 
                 # Cálculo: valor total / (anos * 365 dias * 8 horas/dia)
@@ -46,7 +54,15 @@ class GestaoFinanceiraManager:
             
             resultado = cursor.fetchone()
             if resultado and all(resultado.values()):
-                valor_compra = float(resultado['valor_compra'])
+                # Conversão segura para evitar TypeError
+                try:
+                    valor_raw = resultado['valor_compra']
+                    if valor_raw is None:
+                        return 0.0
+                    valor_compra = float(str(valor_raw).replace(',', '.'))
+                except (ValueError, TypeError):
+                    return 0.0
+                    
                 vida_util_anos = int(resultado['vida_util_anos'])
                 data_aquisicao = resultado['data_aquisicao']
                 

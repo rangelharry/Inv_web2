@@ -593,8 +593,18 @@ def show_orcamentos_cotacoes_page():
                                                                key=f"preco_{solicitacao['id']}")
                             
                             with col_b:
+                                # Conversão segura da quantidade
+                                try:
+                                    qtd_raw = solicitacao['quantidade']
+                                    if qtd_raw is None:
+                                        qtd_float = 1.0
+                                    else:
+                                        qtd_float = float(str(qtd_raw).replace(',', '.'))
+                                except (ValueError, TypeError):
+                                    qtd_float = 1.0
+                                
                                 preco_total = st.number_input("Preço Total (R$):", 
-                                                            value=preco_unitario * float(solicitacao['quantidade']),
+                                                            value=preco_unitario * qtd_float,
                                                             key=f"total_{solicitacao['id']}")
                                 
                                 prazo_entrega = st.number_input("Prazo Entrega (dias):", 
