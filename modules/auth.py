@@ -354,6 +354,12 @@ class AuthenticationManager:
             conn = self.get_connection()
             cursor = conn.cursor()
             
+            # Verificar se o usuário existe primeiro
+            cursor.execute("SELECT id FROM usuarios WHERE id = %s", (user_id,))
+            if not cursor.fetchone():
+                print(f"Erro: Usuario {user_id} não encontrado")
+                return False
+            
             for modulo, acesso in permissions.items():
                 cursor.execute("""
                     INSERT INTO permissoes_modulos (usuario_id, modulo, acesso)
@@ -367,7 +373,11 @@ class AuthenticationManager:
             
         except Exception as e:
             print(f"Erro ao atualizar permissões: {e}")
-            conn.rollback()
+            try:
+                conn.rollback()
+            except:
+                pass
+            return False
             return False
     
     def logout_user(self, token: str = None) -> bool:

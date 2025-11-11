@@ -54,16 +54,11 @@ class DatabaseConnection:
                 print("RECONECTANDO - PostgreSQL...")
                 self.create_connection()
             else:
-                # Fazer rollback de qualquer transação abortada antes de testar
-                try:
-                    self.conn.rollback()
-                except:
-                    pass
-                
                 # Testa a conexão com um ping simples
                 cursor = self.conn.cursor()
                 cursor.execute("SELECT 1")
                 cursor.fetchone()
+                cursor.close()
             return self.conn
         except (psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.errors.InFailedSqlTransaction) as e:
             print(f"RECONECTANDO - Conexão perdida: {e}")

@@ -19,12 +19,11 @@ class UsuariosManager:
     
     def create_usuario(self, data: Dict[str, Any]) -> Optional[int]:
         """Cria um novo usuário"""
+        conn = None
         try:
-            # Garantir que a conexão esteja limpa
-            if hasattr(self.db.get_connection(), 'rollback'):
-                self.db.get_connection().rollback()  # type: ignore
-            
-            cursor = self.db.get_connection().cursor()  # type: ignore
+            # Obter nova conexão para garantir transação limpa
+            conn = self.db.get_connection()  # type: ignore
+            cursor = conn.cursor()  # type: ignore
             
             # Hash da senha
             password_hash = bcrypt.hashpw(data['senha'].encode('utf-8'), bcrypt.gensalt())
@@ -32,29 +31,37 @@ class UsuariosManager:
             cursor.execute("""
                 INSERT INTO usuarios (
                     nome, email, password_hash, perfil, ativo
-                ) VALUES (%s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s) RETURNING id
             """, (
                 data['nome'], data['email'], password_hash.decode('utf-8'),
-                data['perfil'], 1 if data.get('ativo', True) else 0
+                data['perfil'], bool(data.get('ativo', True))
             ))
+            
             # Recuperar o id do usuário criado
-            cursor.execute("SELECT currval(pg_get_serial_sequence('usuarios','id'))")
             result = cursor.fetchone()
             usuario_id = result['id'] if result else None
-            self.db.get_connection().commit()  # type: ignore
             
-            # Log da ação
-            from modules.auth import auth_manager
-            auth_manager.log_action(  # type: ignore
-                1, f"Criou usuário: {data['nome']} (ID: {usuario_id})",  # type: ignore
-                "Usuários", None  # type: ignore
-            )  # type: ignore
+            # Commit da transação
+            conn.commit()  # type: ignore
+            
+            # Log da ação (fora da transação principal)
+            try:
+                from modules.auth import auth_manager
+                auth_manager.log_action(  # type: ignore
+                    1, f"Criou usuário: {data['nome']} (ID: {usuario_id})",  # type: ignore
+                    "Usuários", None  # type: ignore
+                )  # type: ignore
+            except Exception as log_e:
+                pass  # Log não crítico
             
             return usuario_id
         except Exception as e:
             # Fazer rollback explícito para limpar o estado da transação
-            if hasattr(self.db.get_connection(), 'rollback'):
-                self.db.get_connection().rollback()  # type: ignore
+            try:
+                if hasattr(self.db.get_connection(), 'rollback'):
+                    self.db.get_connection().rollback()  # type: ignore
+            except:
+                pass
             st.error(f"Erro ao criar usuário: {str(e)}")  # type: ignore
             return None
     
@@ -161,7 +168,7 @@ class UsuariosManager:
                 
             if 'ativo' in data:  # type: ignore
                 update_parts.append("ativo = %s")  # type: ignore
-                params.append(1 if data['ativo'] else 0)  # type: ignore
+                params.append(bool(data['ativo']))  # type: ignore
             
             # Senha
             if data.get('nova_senha'):  # type: ignore
@@ -651,16 +658,28 @@ def show_usuarios_page():
                         
                         usuario_id = manager.create_usuario(data)  # type: ignore
                         if usuario_id:
-                            # Salvar permissões de módulos
-                            from modules.auth import auth_manager
-                            auth_manager.update_user_module_permissions(usuario_id, permissions)
+                            # Salvar permissões de módulos após o usuário ser criado
+                            try:
+                                import time
+                                time.sleep(0.1)  # Pequeno delay para garantir que o commit foi processado
+                                
+                                from modules.auth import auth_manager
+                                perm_success = auth_manager.update_user_module_permissions(usuario_id, permissions)
+                                
+                                if perm_success:
+                                    st.success(f"✅ Usuário '{nome}' cadastrado com sucesso! (ID: {usuario_id})")
+                                else:
+                                    st.warning(f"⚠️ Usuário '{nome}' criado (ID: {usuario_id}), mas houve problema ao salvar permissões. Verifique as permissões manualmente.")
+                            except Exception as perm_error:
+                                st.warning(f"⚠️ Usuário '{nome}' criado (ID: {usuario_id}), mas erro nas permissões: {perm_error}")
                             
-                            st.success(f"✅ Usuário '{nome}' cadastrado com sucesso! (ID: {usuario_id})")
                             # Limpar formulário após sucesso
                             for key in list(st.session_state.keys()):
                                 if key.startswith('form_usuario_') or key.startswith('perm_'):
                                     del st.session_state[key]
                             st.rerun()
+                        else:
+                            st.error("❌ Erro ao cadastrar usuário. Verifique os dados e tente novamente.")
                 else:
                     st.error("❌ Preencha todos os campos obrigatórios marcados com *")
     

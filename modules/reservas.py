@@ -63,7 +63,7 @@ class ReservaManager:
                 query = """
                     SELECT id, codigo, nome, marca, modelo, status
                     FROM equipamentos_eletricos 
-                    WHERE ativo = TRUE AND status = 'Ativo'
+                    WHERE ativo = TRUE AND status = 'Disponível'
                 """
                 params = []
                 
@@ -77,18 +77,18 @@ class ReservaManager:
                 
             else:  # equipamentos_manuais
                 query = """
-                    SELECT id, codigo, nome, marca, modelo, status
+                    SELECT id, codigo, descricao as nome, marca, '' as modelo, status
                     FROM equipamentos_manuais 
-                    WHERE ativo = TRUE AND status = 'Ativo'
+                    WHERE ativo = TRUE AND status = 'Disponível'
                 """
                 params = []
                 
                 if busca:
-                    query += " AND (nome ILIKE %s OR codigo ILIKE %s OR marca ILIKE %s)"
+                    query += " AND (descricao ILIKE %s OR codigo ILIKE %s OR marca ILIKE %s)"
                     busca_param = f"%{busca}%"
                     params.extend([busca_param, busca_param, busca_param])
                     
-                query += " ORDER BY nome"
+                query += " ORDER BY descricao"
                 cursor.execute(query, params)
             
             equipamentos = []
@@ -143,16 +143,7 @@ def show_reservas_page():
                 equipamento_id = equipamento_options.get(equipamento_selecionado, 1)
             else:
                 st.warning("Nenhum equipamento encontrado para os critérios de busca.")
-                equipamentos = [{"id": 1, "nome": "Martelo"}, 
-                               {"id": 2, "nome": "Chave de Fenda"}]
-            
-            if equipamentos:
-                eq_options = {f"{eq['nome']} (ID: {eq['id']})": eq['id'] for eq in equipamentos}
-                eq_selected = st.selectbox("Equipamento:", list(eq_options.keys()))
-                eq_id = eq_options[eq_selected] if eq_selected else None
-            else:
-                st.warning("Nenhum equipamento disponível")
-                eq_id = None
+                equipamento_id = None
         
         with col2:
             data_inicio = st.date_input("Data Início:", 
@@ -164,9 +155,9 @@ def show_reservas_page():
             usuario = st.text_input("Usuário:", placeholder="Nome do usuário")
         
         if st.button("📅 Criar Reserva", use_container_width=True):
-            if eq_id and data_inicio and data_fim and usuario:
+            if equipamento_id and data_inicio and data_fim and usuario:
                 if data_fim >= data_inicio:
-                    sucesso = manager.reservar(eq_id, usuario, data_inicio, data_fim)
+                    sucesso = manager.reservar(equipamento_id, usuario, data_inicio, data_fim)
                     
                     if sucesso:
                         st.success("✅ Reserva criada com sucesso!")
