@@ -42,7 +42,7 @@ def show_dashboard_executivo():
         cursor.execute("SELECT COUNT(*) FROM equipamentos_eletricos WHERE ativo = TRUE")
         total_equipamentos = get_count_result(cursor.fetchone())
         
-        cursor.execute("SELECT COUNT(DISTINCT equipamento_id) FROM movimentacoes WHERE data_movimentacao >= CURRENT_DATE - INTERVAL '30 days'")
+        cursor.execute("SELECT COUNT(DISTINCT item_id) FROM movimentacoes WHERE tipo_item LIKE '%equipamento%' AND data_movimentacao >= CURRENT_DATE - INTERVAL '30 days'")
         equipamentos_utilizados = get_count_result(cursor.fetchone())
         
         taxa_util = (equipamentos_utilizados / total_equipamentos * 100) if total_equipamentos > 0 else 0
@@ -51,7 +51,7 @@ def show_dashboard_executivo():
         cursor.execute("""
             SELECT ee.nome, COUNT(m.id) as movimentacoes
             FROM equipamentos_eletricos ee
-            LEFT JOIN movimentacoes m ON ee.id = m.equipamento_id AND m.data_movimentacao >= CURRENT_DATE - INTERVAL '30 days'
+            LEFT JOIN movimentacoes m ON ee.id = m.item_id AND m.tipo_item = 'equipamento_eletrico' AND m.data_movimentacao >= CURRENT_DATE - INTERVAL '30 days'
             WHERE ee.ativo = TRUE
             GROUP BY ee.id, ee.nome
             ORDER BY movimentacoes DESC
@@ -105,10 +105,10 @@ def show_analise_custos():
             cursor.execute("""
                 SELECT o.nome, 
                        SUM(COALESCE(ee.valor_compra, 0)) as custo_equipamentos,
-                       COUNT(DISTINCT m.equipamento_id) as qtd_equipamentos
+                       COUNT(DISTINCT m.item_id) as qtd_equipamentos
                 FROM obras o
-                LEFT JOIN movimentacoes m ON o.id = m.obra_id
-                LEFT JOIN equipamentos_eletricos ee ON m.equipamento_id = ee.id
+                LEFT JOIN movimentacoes m ON o.id = m.obra_destino_id
+                LEFT JOIN equipamentos_eletricos ee ON m.item_id = ee.id AND m.tipo_item = 'equipamento_eletrico'
                 WHERE o.status = 'ativo'
                 GROUP BY o.id, o.nome
                 ORDER BY custo_equipamentos DESC
@@ -187,7 +187,7 @@ def show_tendencias_insumos():
             fig_insumos = px.bar(df_insumos, x='nome', y='quantidade_atual',
                                color='status_estoque',
                                title="Status de Estoque - Top 10 Menores Quantidades")
-            fig_insumos.update_xaxis(tickangle=45)
+            fig_insumos.update_layout(xaxis_tickangle=45)
             st.plotly_chart(fig_insumos, use_container_width=True)
             
             # Métricas adicionais
