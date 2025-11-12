@@ -434,7 +434,8 @@ def show_usuarios_page():
                         ("subcontratados", "Gestão de Subcontratados"),
                         ("relatorios_custom", "Relatórios Customizáveis"),
                         ("metricas", "Métricas Performance"),
-                        ("backup", "Backup e Recovery"),
+                        ("backup_automatico", "Backup Automático"),
+                        ("auditoria_avancada", "Auditoria Completa"),
                         ("lgpd", "LGPD/Compliance"),
                         ("orcamentos", "Orçamentos e Cotações"),
                         ("faturamento", "Sistema de Faturamento"),
@@ -606,7 +607,8 @@ def show_usuarios_page():
                 ("subcontratados", "🏢 Gestão de Subcontratados", False),
                 ("relatorios_custom", "📋 Relatórios Customizáveis", False),
                 ("metricas", "⚡ Métricas Performance", False),
-                ("backup", "☁️ Backup e Recovery", False),
+                ("backup_automatico", "💾 Backup Automático", False),
+                ("auditoria_avancada", "🔍 Auditoria Completa", False),
                 ("lgpd", "🛡️ LGPD/Compliance", False),
                 ("orcamentos", "🧮 Orçamentos e Cotações", False),
                 ("faturamento", "🧾 Sistema de Faturamento", False),
@@ -623,7 +625,10 @@ def show_usuarios_page():
                     if modulo_id == "dashboard":
                         st.checkbox(modulo_nome, value=True, disabled=True, key=f"perm_{modulo_id}")
                         permissions[modulo_id] = True
-                    elif modulo_id in ["usuarios", "configuracoes", "backup", "lgpd", "integracao"] and perfil != "admin":
+                    elif modulo_id in ["usuarios", "configuracoes", "backup_automatico", "lgpd", "integracao"] and perfil != "admin":
+                        st.checkbox(modulo_nome, value=False, disabled=True, key=f"perm_{modulo_id}")
+                        permissions[modulo_id] = False
+                    elif modulo_id == "auditoria_avancada" and perfil == "usuario":
                         st.checkbox(modulo_nome, value=False, disabled=True, key=f"perm_{modulo_id}")
                         permissions[modulo_id] = False
                     else:

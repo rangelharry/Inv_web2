@@ -146,21 +146,187 @@ class BackupAutomatico:
                 return []
             
             cursor = conn.cursor()
+            
+            # Verificar se a tabela existe
             cursor.execute("""
-                SELECT * FROM backup_configuracoes 
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'backup_configuracoes'
+                )
+            """)
+            
+            tabela_existe = cursor.fetchone()[0]
+            
+            if not tabela_existe:
+                print("Tabela backup_configuracoes não encontrada, criando...")
+                self._criar_tabela_controle()
+                
+            # Verificar se há dados na tabela
+            cursor.execute("SELECT COUNT(*) FROM backup_configuracoes")
+            count = cursor.fetchone()[0]
+            
+            # Se não há dados, criar dados padrão
+            if count == 0:
+                print("Criando configurações padrão de backup...")
+                cursor.execute("""
+                    INSERT INTO backup_configuracoes (
+                        nome, tipo, frequencia, hora_execucao, manter_backups, ativo
+                    ) VALUES 
+                    ('Backup Diário Database', 'database', 'diario', '02:00:00', 7, true),
+                    ('Backup Semanal Completo', 'full', 'semanal', '03:00:00', 4, true),
+                    ('Backup Mensal Arquivos', 'files', 'mensal', '01:00:00', 12, true)
+                """)
+                conn.commit()
+            
+            # Buscar configurações ativas
+            cursor.execute("""
+                SELECT id, nome, tipo, ativo, frequencia, hora_execucao, 
+                       manter_backups, criado_em
+                FROM backup_configuracoes 
                 WHERE ativo = TRUE
+                ORDER BY nome
             """)
             
             results = cursor.fetchall()
-            if results:
-                columns = [desc[0] for desc in cursor.description]
-                return [dict(zip(columns, row)) for row in results]
+            cursor.close()
             
+            if results and len(results) > 0:
+                configs = []
+                for row in results:
+                    # Verificar se é uma tupla válida com dados
+                    if isinstance(row, (tuple, list)) and len(row) >= 8:
+                        config = {
+                            'id': row[0],
+                            'nome': row[1] if row[1] else 'Sem nome',
+                            'tipo': row[2] if row[2] else 'database',
+                            'ativo': bool(row[3]) if row[3] is not None else True,
+                            'frequencia': row[4] if row[4] else 'diario',
+                            'hora_execucao': str(row[5]) if row[5] else '02:00:00',
+                            'manter_backups': row[6] if row[6] else 30,
+                            'criado_em': row[7] if row[7] else datetime.now()
+                        }
+                        configs.append(config)
+                
+                print(f"Configurações encontradas: {len(configs)}")
+                return configs
+            
+            print("Nenhuma configuração ativa encontrada")
             return []
             
         except Exception as e:
             print(f"Erro ao buscar configurações: {e}")
+            import traceback
+            traceback.print_exc()
             return []
+    
+    def _criar_agendamentos_padrao(self) -> bool:
+        """Cria agendamentos padrão se não existirem"""
+        try:
+            conn = self.db.get_connection()
+            if not conn:
+                print("Erro: Sem conexão com o banco")
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Limpar dados existentes primeiro
+            cursor.execute("DELETE FROM backup_configuracoes")
+            
+            # Inserir agendamentos padrão
+            cursor.execute("""
+                INSERT INTO backup_configuracoes (
+                    nome, tipo, frequencia, hora_execucao, manter_backups, ativo
+                ) VALUES 
+                ('Backup Diário Database', 'database', 'diario', '02:00:00', 7, true),
+                ('Backup Semanal Completo', 'full', 'semanal', '03:00:00', 4, true),
+                ('Backup Mensal Arquivos', 'files', 'mensal', '01:00:00', 12, true)
+            """)
+            
+            conn.commit()
+            print("Agendamentos padrão criados com sucesso!")
+            return True
+            
+        except Exception as e:
+            print(f"Erro ao criar agendamentos padrão: {e}")
+            import traceback
+            traceback.print_exc()
+            if 'conn' in locals():
+                conn.rollback()
+            return False
+    
+    def _diagnosticar_tabela(self):
+        """Diagnostica problemas na tabela backup_configuracoes"""
+        try:
+            conn = self.db.get_connection()
+            if not conn:
+                st.error("❌ Erro de conexão com o banco")
+                return
+            
+            cursor = conn.cursor()
+            
+            # Verificar se a tabela existe
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'backup_configuracoes'
+                )
+            """)
+            
+            tabela_existe = cursor.fetchone()[0]
+            
+            if not tabela_existe:
+                st.warning("⚠️ Tabela backup_configuracoes não existe")
+                if st.button("➕ Criar Tabela"):
+                    self._criar_tabela_controle()
+                    st.success("✅ Tabela criada!")
+                    st.experimental_rerun()
+                return
+            
+            # Verificar estrutura da tabela
+            cursor.execute("""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'backup_configuracoes'
+                ORDER BY ordinal_position
+            """)
+            
+            colunas = cursor.fetchall()
+            st.success(f"✅ Tabela existe com {len(colunas)} colunas")
+            
+            # Mostrar colunas
+            with st.expander("📋 Estrutura da Tabela"):
+                for col in colunas:
+                    st.write(f"- {col[0]} ({col[1]})")
+            
+            # Verificar dados
+            cursor.execute("SELECT COUNT(*) FROM backup_configuracoes")
+            total = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM backup_configuracoes WHERE ativo = TRUE")
+            ativos = cursor.fetchone()[0]
+            
+            st.info(f"📊 Total de registros: {total} | Ativos: {ativos}")
+            
+            # Mostrar dados atuais
+            if total > 0:
+                cursor.execute("""
+                    SELECT id, nome, tipo, ativo, frequencia, hora_execucao
+                    FROM backup_configuracoes 
+                    ORDER BY id
+                """)
+                
+                dados = cursor.fetchall()
+                
+                with st.expander("📄 Dados Existentes"):
+                    for row in dados:
+                        status = "✅ Ativo" if row[3] else "❌ Inativo" 
+                        st.write(f"**ID {row[0]}:** {row[1]} | {row[2]} | {status}")
+                        st.write(f"   Frequência: {row[4]} | Horário: {row[5]}")
+            
+            cursor.close()
+            
+        except Exception as e:
+            st.error(f"❌ Erro no diagnóstico: {e}")
     
     def backup_database(self, incluir_estrutura: bool = True, incluir_dados: bool = True) -> Tuple[bool, str, str]:
         """
@@ -601,13 +767,67 @@ def show_backup_interface():
         configs = backup_system._get_configuracoes_ativas()
         
         if configs:
-            st.subheader("Agendamentos Ativos")
+            st.subheader("📅 Agendamentos Ativos")
             
-            df_configs = pd.DataFrame(configs)
-            st.dataframe(
-                df_configs[['nome', 'tipo', 'frequencia', 'hora_execucao', 'ativo']],
-                use_container_width=True
-            )
+            if len(configs) > 0 and isinstance(configs[0], dict):
+                # Dados válidos encontrados
+                df_configs = pd.DataFrame(configs)
+                
+                # Verificar se as colunas existem
+                available_cols = df_configs.columns.tolist()
+                display_cols = []
+                
+                col_mapping = {
+                    'nome': 'Nome',
+                    'tipo': 'Tipo',
+                    'frequencia': 'Frequência',
+                    'hora_execucao': 'Horário',
+                    'ativo': 'Status'
+                }
+                
+                for col in ['nome', 'tipo', 'frequencia', 'hora_execucao', 'ativo']:
+                    if col in available_cols:
+                        display_cols.append(col)
+                
+                if display_cols:
+                    df_display = df_configs[display_cols].copy()
+                    
+                    # Formatar dados para exibição
+                    if 'ativo' in df_display.columns:
+                        df_display['ativo'] = df_display['ativo'].map({True: '✅ Ativo', False: '❌ Inativo'})
+                    
+                    if 'tipo' in df_display.columns:
+                        df_display['tipo'] = df_display['tipo'].map({
+                            'full': '🔄 Completo',
+                            'database': '🗄️ Banco de Dados',
+                            'files': '📁 Arquivos'
+                        })
+                    
+                    # Renomear colunas
+                    df_display.columns = [col_mapping.get(col, col.title()) for col in df_display.columns]
+                    
+                    st.dataframe(df_display, use_container_width=True)
+                else:
+                    st.warning("Estrutura de dados inválida encontrada")
+            else:
+                st.info("ℹ️ Nenhum agendamento encontrado")
+        else:
+            st.info("ℹ️ Nenhum agendamento ativo no momento")
+            
+            # Criar agendamentos padrão
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔧 Criar Agendamentos Padrão"):
+                    resultado = backup_system._criar_agendamentos_padrao()
+                    if resultado:
+                        st.success("✅ Agendamentos padrão criados!")
+                        st.experimental_rerun()
+                    else:
+                        st.error("❌ Erro ao criar agendamentos padrão")
+            
+            with col2:
+                if st.button("🔍 Diagnosticar Tabela"):
+                    backup_system._diagnosticar_tabela()
         
         # Novo agendamento
         st.subheader("➕ Novo Agendamento")

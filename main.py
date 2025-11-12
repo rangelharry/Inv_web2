@@ -618,7 +618,6 @@ def show_sidebar():
             ("Relatórios Customizáveis", "relatorios_custom", "file-earmark-bar-graph"),
             ("Métricas Performance", "metricas", "speedometer"),
             ("Backup Automático", "backup_automatico", "cloud-arrow-up"),
-            ("🔧 Atualizar Permissões", "update_permissions", "gear-wide-connected"),
             ("LGPD/Compliance", "lgpd", "shield-check"),
             ("Orçamentos e Cotações", "orcamentos", "calculator"),
             ("Sistema de Faturamento", "faturamento", "receipt"),
@@ -769,9 +768,6 @@ def main():
     elif selected_page == "Backup Automático":
         from modules.backup_automatico import show_backup_interface
         show_backup_interface()
-    elif selected_page == "🔧 Atualizar Permissões":
-        from modules.update_permissions_interface import show_update_permissions_interface
-        show_update_permissions_interface()
     elif selected_page == "LGPD/Compliance":
         from modules.lgpd_compliance import show_lgpd_compliance_page
         show_lgpd_compliance_page()
