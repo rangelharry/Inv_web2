@@ -371,7 +371,19 @@ def show_usuarios_page():
                     cols[3].error(row['status_texto'])
                 
                 cols[4].write(str(row['data_criacao'])[:10] if row['data_criacao'] else '-')
-                cols[5].write(str(row['ultimo_login'])[:10] if row['ultimo_login'] else 'Nunca')
+                # Formatar último login com data e hora
+                if row['ultimo_login']:
+                    ultimo_login_str = str(row['ultimo_login'])
+                    if len(ultimo_login_str) >= 16:  # Se tem data e hora
+                        # Separar data e hora para melhor visualização
+                        data_parte = ultimo_login_str[:10]  # YYYY-MM-DD
+                        hora_parte = ultimo_login_str[11:16]  # HH:MM
+                        ultimo_login_formatado = f"{data_parte}\n{hora_parte}"
+                    else:
+                        ultimo_login_formatado = ultimo_login_str
+                    cols[5].markdown(f"<small>{ultimo_login_formatado}</small>", unsafe_allow_html=True)
+                else:
+                    cols[5].write('Nunca')
                 
                 # Botões de ação
                 from modules.auth import auth_manager
