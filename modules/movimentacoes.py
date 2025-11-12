@@ -211,11 +211,7 @@ class MovimentacoesManager:
                        COALESCE(i.codigo, ee.codigo, em.codigo) as codigo, 
                        u.nome as usuario_nome,
                        m.tipo_item,
-                       CASE 
-                           WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'movimentacoes' AND column_name = 'tipo_movimentacao')
-                           THEN COALESCE(m.tipo_movimentacao, CASE WHEN m.tipo = 'Entrada' THEN 'entrada' ELSE 'saida' END)
-                           ELSE CASE WHEN m.tipo = 'Entrada' THEN 'entrada' ELSE 'saida' END
-                       END as tipo_movimentacao
+                       CASE WHEN m.tipo = 'Entrada' THEN 'entrada' ELSE 'saida' END as tipo_movimentacao
                 FROM movimentacoes m
                 LEFT JOIN insumos i ON m.item_id = i.id AND m.tipo_item = 'insumo'
                 LEFT JOIN equipamentos_eletricos ee ON m.item_id = ee.id AND m.tipo_item = 'equipamento_eletrico'
