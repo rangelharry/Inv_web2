@@ -52,25 +52,51 @@ class MovimentacoesManager:
                     return None
                     
             # Inserção da movimentação
-            cursor.execute(
-                """
-                INSERT INTO movimentacoes (
-                    item_id, tipo, tipo_item, quantidade, motivo,
-                    obra_origem_id, obra_destino_id,
-                    responsavel_origem_id, responsavel_destino_id,
-                    valor_unitario, observacoes, data_movimentacao, usuario_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-                """,
-                (
-                    data['item_id'], data['tipo'], data['tipo_item'], data['quantidade'],
-                    data.get('motivo'),
-                    data.get('obra_origem_id'), data.get('obra_destino_id'),
-                    data.get('responsavel_origem_id'), data.get('responsavel_destino_id'),
-                    data.get('valor_unitario'), data.get('observacoes'), 
-                    datetime.now(), usuario_id
+            # Determinar tipo_movimentacao baseado no tipo
+            tipo_movimentacao = 'entrada' if data['tipo'].lower() in ['entrada'] else 'saida'
+            
+            # Tentar inserção com nova coluna, se falhar, usar versão antiga
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO movimentacoes (
+                        item_id, tipo, tipo_item, quantidade, motivo,
+                        obra_origem_id, obra_destino_id,
+                        responsavel_origem_id, responsavel_destino_id,
+                        valor_unitario, observacoes, data_movimentacao, usuario_id, tipo_movimentacao
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        data['item_id'], data['tipo'], data['tipo_item'], data['quantidade'],
+                        data.get('motivo'),
+                        data.get('obra_origem_id'), data.get('obra_destino_id'),
+                        data.get('responsavel_origem_id'), data.get('responsavel_destino_id'),
+                        data.get('valor_unitario'), data.get('observacoes'), 
+                        datetime.now(), usuario_id, tipo_movimentacao
+                    )
                 )
-            )
+            except Exception:
+                # Fallback para inserção sem tipo_movimentacao se a coluna não existir
+                cursor.execute(
+                    """
+                    INSERT INTO movimentacoes (
+                        item_id, tipo, tipo_item, quantidade, motivo,
+                        obra_origem_id, obra_destino_id,
+                        responsavel_origem_id, responsavel_destino_id,
+                        valor_unitario, observacoes, data_movimentacao, usuario_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        data['item_id'], data['tipo'], data['tipo_item'], data['quantidade'],
+                        data.get('motivo'),
+                        data.get('obra_origem_id'), data.get('obra_destino_id'),
+                        data.get('responsavel_origem_id'), data.get('responsavel_destino_id'),
+                        data.get('valor_unitario'), data.get('observacoes'), 
+                        datetime.now(), usuario_id
+                    )
+                )
             
             # Recuperar o ID da movimentação criada
             result = cursor.fetchone()
@@ -150,7 +176,12 @@ class MovimentacoesManager:
                        COALESCE(i.descricao, ee.nome, em.descricao) as item_nome, 
                        COALESCE(i.codigo, ee.codigo, em.codigo) as codigo, 
                        u.nome as usuario_nome,
-                       m.tipo_item
+                       m.tipo_item,
+                       CASE 
+                           WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'movimentacoes' AND column_name = 'tipo_movimentacao')
+                           THEN COALESCE(m.tipo_movimentacao, CASE WHEN m.tipo = 'Entrada' THEN 'entrada' ELSE 'saida' END)
+                           ELSE CASE WHEN m.tipo = 'Entrada' THEN 'entrada' ELSE 'saida' END
+                       END as tipo_movimentacao
                 FROM movimentacoes m
                 LEFT JOIN insumos i ON m.item_id = i.id AND m.tipo_item = 'insumo'
                 LEFT JOIN equipamentos_eletricos ee ON m.item_id = ee.id AND m.tipo_item = 'equipamento_eletrico'
@@ -166,31 +197,31 @@ class MovimentacoesManager:
             
             if filters.get('item_nome'):
                 query += """ AND (
-                    i.descricao LIKE %s OR 
-                    ee.nome LIKE %s OR 
-                    em.descricao LIKE %s
+                    i.descricao ILIKE %s OR 
+                    ee.nome ILIKE %s OR 
+                    em.descricao ILIKE %s
                 )"""
                 busca = f"%{filters['item_nome']}%"
                 params.extend([busca, busca, busca])
                 
             if filters.get('tipo'):
-                query += " AND m.tipo = %s"
+                query += " AND m.tipo ILIKE %s"
                 params.append(filters['tipo'])
                 
             if filters.get('obra_origem'):
-                query += " AND o1.nome LIKE %s"
+                query += " AND o1.nome ILIKE %s"
                 params.append(f"%{filters['obra_origem']}%")
                 
             if filters.get('obra_destino'):
-                query += " AND o2.nome LIKE %s"
+                query += " AND o2.nome ILIKE %s"
                 params.append(f"%{filters['obra_destino']}%")
                 
             if filters.get('responsavel_origem'):
-                query += " AND r1.nome LIKE %s"
+                query += " AND r1.nome ILIKE %s"
                 params.append(f"%{filters['responsavel_origem']}%")
                 
             if filters.get('responsavel_destino'):
-                query += " AND r2.nome LIKE %s"
+                query += " AND r2.nome ILIKE %s"
                 params.append(f"%{filters['responsavel_destino']}%")
                 
             if filters.get('data_inicio'):

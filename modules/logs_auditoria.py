@@ -58,7 +58,7 @@ class LogsAuditoriaManager:
             
             if filters:
                 if filters.get('usuario'):  # type: ignore
-                    query += " AND l.usuario_nome LIKE %s"
+                    query += " AND l.usuario_nome ILIKE %s"
                     params.append(f"%{filters['usuario']}%")  # type: ignore
                 if filters.get('modulo'):  # type: ignore
                     query += " AND l.modulo = %s"

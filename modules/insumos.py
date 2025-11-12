@@ -216,7 +216,7 @@ class InsumosManager:
                 if filtros.get('estoque_baixo'):
                     query += " AND i.quantidade_atual <= i.quantidade_minima"
                 if filtros.get('busca'):
-                    query += " AND (i.codigo LIKE %s OR i.descricao LIKE %s OR i.marca LIKE %s)"
+                    query += " AND (i.codigo ILIKE %s OR i.descricao ILIKE %s OR i.marca ILIKE %s)"
                     busca = f"%{filtros['busca']}%"
                     params.extend([busca, busca, busca])
                     

@@ -66,13 +66,13 @@ class ResponsaveisManager:
             
             if filters:
                 if filters.get('nome'):
-                    query += " AND nome LIKE %s"
+                    query += " AND nome ILIKE %s"
                     params.append(f"%{filters['nome']}%")
                 if filters.get('cargo'):
-                    query += " AND cargo LIKE %s"
+                    query += " AND cargo ILIKE %s"
                     params.append(f"%{filters['cargo']}%")
                 if filters.get('departamento'):
-                    query += " AND departamento LIKE %s"
+                    query += " AND departamento ILIKE %s"
                     params.append(f"%{filters['departamento']}%")
                 if filters.get('ativo') is not None:
                     # Corrigir comparação boolean

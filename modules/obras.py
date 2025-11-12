@@ -86,13 +86,13 @@ class ObrasManager:
 
             if filters:
                 if filters.get('nome'):
-                    query += " AND nome LIKE %s"
+                    query += " AND nome ILIKE %s"
                     params.append(f"%{filters['nome']}%")  # type: ignore
                 if filters.get('status'):
-                    query += " AND LOWER(status) = LOWER(%s)"
+                    query += " AND status ILIKE %s"
                     params.append(filters['status'])  # type: ignore
                 if filters.get('responsavel'):
-                    query += " AND responsavel LIKE %s"
+                    query += " AND responsavel ILIKE %s"
                     params.append(f"%{filters['responsavel']}%")  # type: ignore
 
             query += " ORDER BY nome"

@@ -86,11 +86,11 @@ class UsuariosManager:
             
             if filters:
                 if filters.get('nome'):  # type: ignore
-                    query += " AND nome LIKE %s"  # type: ignore
+                    query += " AND nome ILIKE %s"  # type: ignore
                     params.append(f"%{filters['nome']}%")  # type: ignore
                 
                 if filters.get('email'):  # type: ignore
-                    query += " AND email LIKE %s"  # type: ignore
+                    query += " AND email ILIKE %s"  # type: ignore
                     params.append(f"%{filters['email']}%")  # type: ignore
                 
                 if filters.get('perfil') and filters['perfil'] != 'Todos':  # type: ignore

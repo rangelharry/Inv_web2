@@ -73,19 +73,19 @@ class EquipamentosEletricosManager:
             
             if filters:
                 if filters.get('nome'):
-                    query += " AND nome LIKE %s"
+                    query += " AND nome ILIKE %s"
                     params.append(f"%{filters['nome']}%")
                 if filters.get('categoria'):
                     query += " AND categoria_id = %s"
                     params.append(filters['categoria'])
                 if filters.get('status'):
-                    query += " AND status = %s"
+                    query += " AND status ILIKE %s"
                     params.append(filters['status'])
                 if filters.get('marca'):
-                    query += " AND marca LIKE %s"
+                    query += " AND marca ILIKE %s"
                     params.append(f"%{filters['marca']}%")
                 if filters.get('localizacao'):
-                    query += " AND localizacao LIKE %s"
+                    query += " AND localizacao ILIKE %s"
                     params.append(f"%{filters['localizacao']}%")
                     
             query += " ORDER BY nome"

@@ -341,7 +341,7 @@ class WorkflowManager:
         cursor.execute("""
         SELECT MAX(CAST(SUBSTRING(codigo_solicitacao FROM '[0-9]+$') AS INTEGER))
         FROM solicitacoes_aprovacao 
-        WHERE codigo_solicitacao LIKE %s
+        WHERE codigo_solicitacao ILIKE %s
         """, [f"{prefixo}{ano_mes}%"])
         
         ultimo_numero = cursor.fetchone()[0] or 0
