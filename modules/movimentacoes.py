@@ -55,46 +55,62 @@ class MovimentacoesManager:
             # Determinar tipo_movimentacao baseado no tipo
             tipo_movimentacao = 'entrada' if data['tipo'].lower() in ['entrada'] else 'saida'
             
-            # Tentar inserção com nova coluna, se falhar, usar versão antiga
+            # Determinar colunas específicas baseado no tipo do item
+            insumo_id = None
+            equipamento_eletrico_id = None
+            equipamento_manual_id = None
+            
+            if data.get('tipo_item') == 'insumo':
+                insumo_id = data['item_id']
+            elif data.get('tipo_item') == 'equipamento_eletrico':
+                equipamento_eletrico_id = data['item_id']
+            elif data.get('tipo_item') == 'equipamento_manual':
+                equipamento_manual_id = data['item_id']
+            
+            # Inserção correta usando colunas específicas
             try:
                 cursor.execute(
                     """
                     INSERT INTO movimentacoes (
-                        item_id, tipo, tipo_item, quantidade, motivo,
+                        tipo, quantidade, 
+                        insumo_id, equipamento_eletrico_id, equipamento_manual_id,
                         obra_origem_id, obra_destino_id,
                         responsavel_origem_id, responsavel_destino_id,
-                        valor_unitario, observacoes, data_movimentacao, usuario_id, tipo_movimentacao
+                        valor_unitario, observacoes, data_movimentacao, usuario_id, 
+                        movimentacao_origem_id, tipo_movimentacao, motivo
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        data['tipo'], data['quantidade'],
+                        insumo_id, equipamento_eletrico_id, equipamento_manual_id,
+                        data.get('obra_origem_id'), data.get('obra_destino_id'),
+                        data.get('responsavel_origem_id'), data.get('responsavel_destino_id'),
+                        data.get('valor_unitario'), data.get('observacoes'), 
+                        datetime.now(), usuario_id,
+                        data.get('movimentacao_origem_id'), tipo_movimentacao, data.get('motivo')
+                    )
+                )
+            except Exception as e:
+                # Fallback para inserção sem movimentacao_origem_id e tipo_movimentacao se não existirem
+                cursor.execute(
+                    """
+                    INSERT INTO movimentacoes (
+                        tipo, quantidade,
+                        insumo_id, equipamento_eletrico_id, equipamento_manual_id,
+                        obra_origem_id, obra_destino_id,
+                        responsavel_origem_id, responsavel_destino_id,
+                        valor_unitario, observacoes, data_movimentacao, usuario_id, motivo
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (
-                        data['item_id'], data['tipo'], data['tipo_item'], data['quantidade'],
-                        data.get('motivo'),
+                        data['tipo'], data['quantidade'],
+                        insumo_id, equipamento_eletrico_id, equipamento_manual_id,
                         data.get('obra_origem_id'), data.get('obra_destino_id'),
                         data.get('responsavel_origem_id'), data.get('responsavel_destino_id'),
                         data.get('valor_unitario'), data.get('observacoes'), 
-                        datetime.now(), usuario_id, tipo_movimentacao
-                    )
-                )
-            except Exception:
-                # Fallback para inserção sem tipo_movimentacao se a coluna não existir
-                cursor.execute(
-                    """
-                    INSERT INTO movimentacoes (
-                        item_id, tipo, tipo_item, quantidade, motivo,
-                        obra_origem_id, obra_destino_id,
-                        responsavel_origem_id, responsavel_destino_id,
-                        valor_unitario, observacoes, data_movimentacao, usuario_id
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                    """,
-                    (
-                        data['item_id'], data['tipo'], data['tipo_item'], data['quantidade'],
-                        data.get('motivo'),
-                        data.get('obra_origem_id'), data.get('obra_destino_id'),
-                        data.get('responsavel_origem_id'), data.get('responsavel_destino_id'),
-                        data.get('valor_unitario'), data.get('observacoes'), 
-                        datetime.now(), usuario_id
+                        datetime.now(), usuario_id, data.get('motivo')
                     )
                 )
             
@@ -303,6 +319,7 @@ class MovimentacoesManager:
     def get_dashboard_stats(self) -> dict[str, int]:
         """Estatísticas para o dashboard"""
         try:
+            conn = self.db.get_connection()
             cursor = conn.cursor() if conn else None
             if not cursor:
                 return None
@@ -400,8 +417,24 @@ class MovimentacoesManager:
                 mov_original = dict(zip(columns, mov_original))
             
             # 2. Validações
-            if mov_original['tipo_movimentacao'] != 'saida':
+            if mov_original.get('tipo_movimentacao') != 'saida':
                 return False, "Só é possível devolver movimentações de saída"
+                
+            # Determinar o item_id e tipo_item baseado nas colunas específicas
+            item_id = None
+            tipo_item = None
+            
+            if mov_original.get('insumo_id'):
+                item_id = mov_original['insumo_id']
+                tipo_item = 'insumo'
+            elif mov_original.get('equipamento_eletrico_id'):
+                item_id = mov_original['equipamento_eletrico_id']
+                tipo_item = 'equipamento_eletrico'
+            elif mov_original.get('equipamento_manual_id'):
+                item_id = mov_original['equipamento_manual_id']
+                tipo_item = 'equipamento_manual'
+            else:
+                return False, "Tipo de item não identificado na movimentação original"
             
             # 3. Determinar quantidade a devolver
             qtd_original = mov_original.get('quantidade', 1)
@@ -420,13 +453,10 @@ class MovimentacoesManager:
             
             # 5. Criar registro de devolução
             dados_devolucao = {
-                'item_id': mov_original['item_id'],
-                'tipo': mov_original['tipo'],
-                'tipo_item': mov_original.get('tipo_item', ''),
-                'tipo_movimentacao': 'entrada' if tipo_devolucao != 'transferencia' else 'saida',
+                'item_id': item_id,
+                'tipo': 'Entrada' if tipo_devolucao != 'transferencia' else 'Saída',
+                'tipo_item': tipo_item,
                 'quantidade': qtd_devolver,
-                'local_origem': mov_original.get('local_destino', ''),
-                'local_destino': local_destino,
                 'motivo': f"DEVOLUÇÃO {tipo_devolucao.upper()}: {motivo}",
                 'observacoes': f"Devolução da movimentação #{movimentacao_original_id}",
                 'movimentacao_origem_id': movimentacao_original_id,

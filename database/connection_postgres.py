@@ -37,9 +37,9 @@ class DatabaseConnection:
                 cursor_factory=psycopg2.extras.RealDictCursor
             )
             self.conn.autocommit = False
-            print("✅ Conexão com PostgreSQL estabelecida!")
+            print("OK - Conexao com PostgreSQL estabelecida!")
         except Exception as e:
-            print(f"❌ Erro ao conectar com PostgreSQL: {e}")
+            print(f"ERRO - Erro ao conectar com PostgreSQL: {e}")
             raise
     
     def get_connection(self):
@@ -343,7 +343,7 @@ class DatabaseConnection:
         
         self.conn.commit()
         self.create_default_categories()
-        print("✅ Todas as tabelas PostgreSQL foram criadas com sucesso!")
+        print("OK - Todas as tabelas PostgreSQL foram criadas com sucesso!")
     
     def create_default_categories(self):
         cursor = self.get_connection().cursor()
@@ -394,7 +394,7 @@ class DatabaseConnection:
         """, ('Administrador', 'admin@inventario.com', password_hash, 'admin', True))
         
         self.conn.commit()
-        print("✅ Usuário administrador padrão criado!")
+        print("OK - Usuario administrador padrao criado!")
         print("   Email: admin@inventario.com")
         print("   Senha: admin123")
     
