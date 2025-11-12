@@ -11,12 +11,14 @@ from modules.movimentacao_modal import (
     show_movimentacao_modal_equipamento_eletrico,  # type: ignore
     show_movimentacao_modal_equipamento_manual  # type: ignore
 )
+from modules.auditoria_avancada import AuditoriaAvancada, auditar_acao
 
 
 # Classe MovimentacoesManager
 class MovimentacoesManager:
     def __init__(self):
         self.db = db
+        self.auditoria = AuditoriaAvancada()
 
     def create_movimentacao(self, data: dict[str, Any], usuario_id: int) -> int | None:
         """Cria uma nova movimentação"""
@@ -125,6 +127,22 @@ class MovimentacoesManager:
                     movimentacao_id = result[0] if result else None
                     
             conn.commit()
+            
+            # Registrar auditoria
+            self.auditoria.registrar_acao(
+                modulo='movimentacoes',
+                acao='criar',
+                entidade=data.get('tipo_item'),
+                entidade_id=data.get('item_id'),
+                dados_depois={
+                    'movimentacao_id': movimentacao_id,
+                    'tipo': data['tipo'],
+                    'quantidade': data['quantidade'],
+                    'obra_origem_id': data.get('obra_origem_id'),
+                    'obra_destino_id': data.get('obra_destino_id')
+                },
+                dados_contexto={'usuario_id': usuario_id}
+            )
             
             # Atualizar estoque se for movimentação de insumo
             if data.get('tipo_item') == 'insumo' and movimentacao_id:

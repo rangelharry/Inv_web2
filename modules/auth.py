@@ -282,7 +282,7 @@ class AuthenticationManager:
                     'obras': True,
                     'responsaveis': True,
                     'relatorios': True,
-                    'logs': True,
+                    'auditoria_avancada': True,  # Auditoria Completa
                     'usuarios': True,
                     'configuracoes': True,
                     'qr_codes': True,
@@ -295,7 +295,7 @@ class AuthenticationManager:
                     'subcontratados': True,
                     'relatorios_custom': True,
                     'metricas': True,
-                    'backup': True,
+                    'backup_automatico': True,  # Backup Automático
                     'lgpd': True,
                     'orcamentos': True,
                     'faturamento': True,
@@ -312,13 +312,15 @@ class AuthenticationManager:
                     'obras': True,
                     'responsaveis': True,
                     'relatorios': True,
+                    'auditoria_avancada': True,  # Gestor tem acesso à auditoria
                     'qr_codes': True,
                     'reservas': True,
                     'manutencao': True,
                     'localizacao': True,
                     'financeiro': True,
                     'relatorios_custom': True,
-                    'metricas': True
+                    'metricas': True,
+                    'backup_automatico': False  # Gestor NÃO tem acesso ao backup (apenas admin)
                 }
             else:
                 # Usuário normal tem acesso básico

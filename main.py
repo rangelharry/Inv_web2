@@ -604,7 +604,7 @@ def show_sidebar():
             ("Obras/Departamentos", "obras", "building"),
             ("Responsáveis", "responsaveis", "people"),
             ("Relatórios", "relatorios", "file-earmark-text"),
-            ("Logs de Auditoria", "logs", "journal-text"),
+            ("Auditoria Completa", "auditoria_avancada", "shield-check"),
             ("Usuários", "usuarios", "person-plus"),
             ("Configurações", "configuracoes", "gear"),
             ("QR/Códigos de Barras", "qr_codes", "qr-code"),
@@ -617,7 +617,8 @@ def show_sidebar():
             ("Gestão de Subcontratados", "subcontratados", "building-gear"),
             ("Relatórios Customizáveis", "relatorios_custom", "file-earmark-bar-graph"),
             ("Métricas Performance", "metricas", "speedometer"),
-            ("Backup e Recovery", "backup", "cloud-download"),
+            ("Backup Automático", "backup_automatico", "cloud-arrow-up"),
+            ("🔧 Atualizar Permissões", "update_permissions", "gear-wide-connected"),
             ("LGPD/Compliance", "lgpd", "shield-check"),
             ("Orçamentos e Cotações", "orcamentos", "calculator"),
             ("Sistema de Faturamento", "faturamento", "receipt"),
@@ -727,8 +728,9 @@ def main():
         show_responsaveis_page()
     elif selected_page == "Relatórios":
         show_relatorios_page()
-    elif selected_page == "Logs de Auditoria":
-        show_logs_auditoria_page()
+    elif selected_page == "Auditoria Completa":
+        from modules.auditoria_avancada import show_auditoria_interface
+        show_auditoria_interface()
     elif selected_page == "Usuários":
         from modules.usuarios import show_usuarios_page
         show_usuarios_page()
@@ -764,9 +766,12 @@ def main():
     elif selected_page == "Métricas Performance":
         from modules.metricas_performance import show_metricas_performance_page
         show_metricas_performance_page()
-    elif selected_page == "Backup e Recovery":
-        from modules.backup_recovery import show_backup_recovery_page
-        show_backup_recovery_page()
+    elif selected_page == "Backup Automático":
+        from modules.backup_automatico import show_backup_interface
+        show_backup_interface()
+    elif selected_page == "🔧 Atualizar Permissões":
+        from modules.update_permissions_interface import show_update_permissions_interface
+        show_update_permissions_interface()
     elif selected_page == "LGPD/Compliance":
         from modules.lgpd_compliance import show_lgpd_compliance_page
         show_lgpd_compliance_page()
