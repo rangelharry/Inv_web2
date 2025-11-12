@@ -236,6 +236,18 @@ class AuthenticationManager:
             conn = self.get_connection()
             cursor = conn.cursor()
             
+            # Verificar se a tabela de permissões existe
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'permissoes_modulos'
+                )
+            """)
+            
+            if not cursor.fetchone()[0]:
+                print(f"Tabela permissoes_modulos não existe, usando permissões padrão para usuário {user_id}")
+                return self._get_default_permissions_by_profile(user_id)
+            
             cursor.execute("""
                 SELECT modulo, acesso 
                 FROM permissoes_modulos 
@@ -253,8 +265,13 @@ class AuthenticationManager:
             
             # Se não tem permissões cadastradas, usar padrões baseados no perfil
             if not permissions:
-                return self._get_default_permissions_by_profile(user_id)
+                print(f"Nenhuma permissão encontrada para usuário {user_id}, usando padrões")
+                default_perms = self._get_default_permissions_by_profile(user_id)
+                # Salvar as permissões padrão
+                self.update_user_module_permissions(user_id, default_perms)
+                return default_perms
             
+            print(f"Permissões carregadas para usuário {user_id}: {len(permissions)} módulos")
             return permissions
             
         except Exception as e:
@@ -356,30 +373,47 @@ class AuthenticationManager:
             conn = self.get_connection()
             cursor = conn.cursor()
             
+            # Criar tabela de permissões se não existir
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS permissoes_modulos (
+                    id SERIAL PRIMARY KEY,
+                    usuario_id INTEGER REFERENCES usuarios(id),
+                    modulo VARCHAR(100) NOT NULL,
+                    acesso BOOLEAN DEFAULT TRUE,
+                    data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(usuario_id, modulo)
+                )
+            """)
+            
             # Verificar se o usuário existe primeiro
             cursor.execute("SELECT id FROM usuarios WHERE id = %s", (user_id,))
             if not cursor.fetchone():
                 print(f"Erro: Usuario {user_id} não encontrado")
                 return False
             
+            # Primeiro, remover todas as permissões existentes do usuário
+            cursor.execute("DELETE FROM permissoes_modulos WHERE usuario_id = %s", (user_id,))
+            
+            # Inserir novas permissões
             for modulo, acesso in permissions.items():
                 cursor.execute("""
-                    INSERT INTO permissoes_modulos (usuario_id, modulo, acesso)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (usuario_id, modulo) 
-                    DO UPDATE SET acesso = EXCLUDED.acesso
-                """, (user_id, modulo, acesso))
+                    INSERT INTO permissoes_modulos (usuario_id, modulo, acesso, data_atualizacao)
+                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+                """, (user_id, modulo, bool(acesso)))
             
             conn.commit()
+            print(f"Permissões atualizadas para usuário {user_id}: {len(permissions)} módulos")
             return True
             
         except Exception as e:
             print(f"Erro ao atualizar permissões: {e}")
+            import traceback
+            traceback.print_exc()
             try:
                 conn.rollback()
             except:
                 pass
-            return False
             return False
     
     def logout_user(self, token: str = None) -> bool:

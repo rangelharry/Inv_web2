@@ -411,6 +411,12 @@ def show_usuarios_page():
                     from modules.auth import auth_manager
                     current_permissions = auth_manager.get_user_module_permissions(user_to_edit['id'])
                     
+                    # Debug: mostrar permissões atuais
+                    st.info(f"**Permissões atuais:** {len(current_permissions)} módulos carregados")
+                    with st.expander("🔍 Debug - Permissões Atuais"):
+                        for mod, perm in current_permissions.items():
+                            st.write(f"- {mod}: {'✅' if perm else '❌'}")
+                    
                     # Lista de módulos disponíveis
                     modules_list = [
                         ("dashboard", "Dashboard"),
@@ -501,10 +507,21 @@ def show_usuarios_page():
                                 if manager.update_usuario(user_to_edit['id'], update_data):  # type: ignore
                                     # Atualizar permissões de módulos
                                     from modules.auth import auth_manager
-                                    auth_manager.update_user_module_permissions(user_to_edit['id'], edit_permissions)
                                     
-                                    st.session_state.editing_user = None  # type: ignore
-                                    st.rerun()  # type: ignore
+                                    # Debug: mostrar permissões que serão salvas
+                                    st.write(f"**Debug - Permissões a salvar:** {len(edit_permissions)} módulos")
+                                    for mod, perm in edit_permissions.items():
+                                        if perm:  # Mostrar apenas as marcadas
+                                            st.write(f"- {mod}: {'✅' if perm else '❌'}")
+                                    
+                                    perm_result = auth_manager.update_user_module_permissions(user_to_edit['id'], edit_permissions)
+                                    
+                                    if perm_result:
+                                        st.success("✅ Usuário e permissões atualizados com sucesso!")
+                                        st.session_state.editing_user = None  # type: ignore
+                                        st.rerun()  # type: ignore
+                                    else:
+                                        st.warning("⚠️ Usuário atualizado, mas houve erro nas permissões")
                                 else:  # type: ignore
                                     st.error("❌ Falha ao atualizar o usuário. Verifique os logs.")  # type: ignore
                     

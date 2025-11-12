@@ -283,6 +283,27 @@ class AuditoriaAvancada:
             
             cursor = conn.cursor()
             
+            # Verificar se a tabela existe
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'auditoria_logs'
+                )
+            """)
+            
+            if not cursor.fetchone()[0]:
+                # Criar tabela se não existir
+                self._criar_tabelas_auditoria()
+                return {
+                    'total_logs': 0,
+                    'sucessos': 0,
+                    'erros': 0,
+                    'usuarios_ativos': 0,
+                    'logs_24h': 0,
+                    'top_modulos': [],
+                    'top_acoes': []
+                }
+            
             # Estatísticas gerais
             cursor.execute("""
                 SELECT 

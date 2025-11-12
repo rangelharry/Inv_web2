@@ -763,71 +763,88 @@ def show_backup_interface():
     with tab2:
         st.header("⏰ Agendamentos de Backup")
         
-        # Configurações atuais
-        configs = backup_system._get_configuracoes_ativas()
+        # Status da conexão
+        st.info("🔗 Verificando configurações de backup...")
         
-        if configs:
+        # Configurações atuais
+        with st.spinner("Carregando agendamentos..."):
+            configs = backup_system._get_configuracoes_ativas()
+        
+        st.write(f"**Debug:** Configurações encontradas: {len(configs) if configs else 0}")
+        
+        if configs and len(configs) > 0:
             st.subheader("📅 Agendamentos Ativos")
             
-            if len(configs) > 0 and isinstance(configs[0], dict):
-                # Dados válidos encontrados
-                df_configs = pd.DataFrame(configs)
+            # Verificar se são dicionários válidos
+            valid_configs = []
+            for config in configs:
+                if isinstance(config, dict) and 'nome' in config:
+                    valid_configs.append(config)
+            
+            if valid_configs:
+                st.success(f"✅ {len(valid_configs)} agendamentos válidos encontrados")
                 
-                # Verificar se as colunas existem
+                # Criar DataFrame
+                df_configs = pd.DataFrame(valid_configs)
+                
+                # Verificar colunas disponíveis
                 available_cols = df_configs.columns.tolist()
-                display_cols = []
+                st.write(f"**Debug - Colunas disponíveis:** {available_cols}")
                 
-                col_mapping = {
-                    'nome': 'Nome',
-                    'tipo': 'Tipo',
-                    'frequencia': 'Frequência',
-                    'hora_execucao': 'Horário',
-                    'ativo': 'Status'
-                }
+                # Colunas para exibir
+                display_data = []
+                for config in valid_configs:
+                    row = {
+                        'Nome': config.get('nome', 'N/A'),
+                        'Tipo': config.get('tipo', 'N/A'),
+                        'Frequência': config.get('frequencia', 'N/A'),
+                        'Horário': str(config.get('hora_execucao', 'N/A')),
+                        'Status': '✅ Ativo' if config.get('ativo', False) else '❌ Inativo'
+                    }
+                    display_data.append(row)
                 
-                for col in ['nome', 'tipo', 'frequencia', 'hora_execucao', 'ativo']:
-                    if col in available_cols:
-                        display_cols.append(col)
-                
-                if display_cols:
-                    df_display = df_configs[display_cols].copy()
+                # Exibir tabela
+                if display_data:
+                    df_display = pd.DataFrame(display_data)
                     
-                    # Formatar dados para exibição
-                    if 'ativo' in df_display.columns:
-                        df_display['ativo'] = df_display['ativo'].map({True: '✅ Ativo', False: '❌ Inativo'})
-                    
-                    if 'tipo' in df_display.columns:
-                        df_display['tipo'] = df_display['tipo'].map({
+                    # Formatar tipos
+                    if 'Tipo' in df_display.columns:
+                        tipo_map = {
                             'full': '🔄 Completo',
                             'database': '🗄️ Banco de Dados',
                             'files': '📁 Arquivos'
-                        })
-                    
-                    # Renomear colunas
-                    df_display.columns = [col_mapping.get(col, col.title()) for col in df_display.columns]
+                        }
+                        df_display['Tipo'] = df_display['Tipo'].map(tipo_map).fillna(df_display['Tipo'])
                     
                     st.dataframe(df_display, use_container_width=True)
                 else:
-                    st.warning("Estrutura de dados inválida encontrada")
+                    st.warning("⚠️ Erro ao formatar dados para exibição")
             else:
-                st.info("ℹ️ Nenhum agendamento encontrado")
+                st.warning("⚠️ Configurações encontradas mas são inválidas")
+                st.write(f"**Debug - Dados brutos:** {configs}")
         else:
             st.info("ℹ️ Nenhum agendamento ativo no momento")
             
-            # Criar agendamentos padrão
-            col1, col2 = st.columns(2)
+            # Opções de resolução
+            col1, col2, col3 = st.columns(3)
+            
             with col1:
-                if st.button("🔧 Criar Agendamentos Padrão"):
-                    resultado = backup_system._criar_agendamentos_padrao()
-                    if resultado:
-                        st.success("✅ Agendamentos padrão criados!")
-                        st.experimental_rerun()
-                    else:
-                        st.error("❌ Erro ao criar agendamentos padrão")
+                if st.button("🔧 Criar Agendamentos", type="primary"):
+                    with st.spinner("Criando agendamentos..."):
+                        resultado = backup_system._criar_agendamentos_padrao()
+                        if resultado:
+                            st.success("✅ Agendamentos criados!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Erro ao criar agendamentos")
             
             with col2:
-                if st.button("🔍 Diagnosticar Tabela"):
+                if st.button("🔍 Diagnosticar"):
                     backup_system._diagnosticar_tabela()
+            
+            with col3:
+                if st.button("🔄 Recarregar"):
+                    st.rerun()
         
         # Novo agendamento
         st.subheader("➕ Novo Agendamento")
