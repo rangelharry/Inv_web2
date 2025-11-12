@@ -115,35 +115,74 @@ class ManutencaoPreventivaManager:
             equipamentos_manuais = cursor.fetchall()
             
             equipamentos = []
+            equipamentos = []
+            
             # Processar equipamentos elétricos
             for row in equipamentos_eletricos:
                 if isinstance(row, dict):
-                    equipamentos.append(row)
+                    equipamento = dict(row)
+                    equipamento['display_name'] = f"{equipamento['nome']} (ID: {equipamento['id']}) - {equipamento['tipo']}"
+                    equipamentos.append(equipamento)
                 else:
-                    columns = [desc[0] for desc in cursor.description]
-                    equipamentos.append(dict(zip(columns, row)))
+                    # Para tuplas, criar dict manualmente
+                    equipamento = {
+                        'id': row[0],
+                        'codigo': row[1] or '',
+                        'nome': row[2] or 'Sem nome',
+                        'marca': row[3] or '',
+                        'modelo': row[4] or '',
+                        'status': row[5] or 'Disponível',
+                        'tipo': row[6] or 'Elétrico',
+                        'tabela': row[7] or 'equipamentos_eletricos'
+                    }
+                    equipamento['display_name'] = f"{equipamento['nome']} (ID: {equipamento['id']}) - {equipamento['tipo']}"
+                    equipamentos.append(equipamento)
             
-            # Processar equipamentos manuais (nova query)
-            cursor.execute(query_manuais, params_manuais)
-            for row in cursor.fetchall():
+            # Processar equipamentos manuais
+            for row in equipamentos_manuais:
                 if isinstance(row, dict):
-                    equipamentos.append(row)
+                    equipamento = dict(row)
+                    equipamento['display_name'] = f"{equipamento['nome']} (ID: {equipamento['id']}) - {equipamento['tipo']}"
+                    equipamentos.append(equipamento)
                 else:
-                    columns = [desc[0] for desc in cursor.description]
-                    equipamentos.append(dict(zip(columns, row)))
+                    # Para tuplas, criar dict manualmente
+                    equipamento = {
+                        'id': row[0],
+                        'codigo': row[1] or '',
+                        'nome': row[2] or 'Sem nome',
+                        'marca': row[3] or '',
+                        'modelo': row[4] or '',
+                        'status': row[5] or 'Disponível',
+                        'tipo': row[6] or 'Manual',
+                        'tabela': row[7] or 'equipamentos_manuais'
+                    }
+                    equipamento['display_name'] = f"{equipamento['nome']} (ID: {equipamento['id']}) - {equipamento['tipo']}"
+                    equipamentos.append(equipamento)
 
             return equipamentos
                     
         except Exception as e:
-            st.error(f"Erro ao buscar equipamentos: {e}")
+            print(f"Erro detalhado ao buscar equipamentos: {e}")
+            import traceback
+            traceback.print_exc()
+            
             # Fallback para dados simulados
             equipamentos_fallback = [
-                {"id": 1, "nome": "Furadeira Industrial", "tipo": "Elétrico", "codigo": "EQ-001"},
-                {"id": 2, "nome": "Serra Elétrica", "tipo": "Elétrico", "codigo": "EQ-002"},
-                {"id": 3, "nome": "Martelo", "tipo": "Manual", "codigo": "MAN-001"},
-                {"id": 4, "nome": "Chave de Fenda", "tipo": "Manual", "codigo": "MAN-002"}
+                {"id": 1, "nome": "Furadeira Industrial", "tipo": "Elétrico", "codigo": "EQ-001", 
+                 "marca": "Bosch", "status": "Disponível", "tabela": "equipamentos_eletricos",
+                 "display_name": "Furadeira Industrial (ID: 1) - Elétrico"},
+                {"id": 2, "nome": "Serra Elétrica", "tipo": "Elétrico", "codigo": "EQ-002",
+                 "marca": "Makita", "status": "Disponível", "tabela": "equipamentos_eletricos", 
+                 "display_name": "Serra Elétrica (ID: 2) - Elétrico"},
+                {"id": 3, "nome": "Martelo", "tipo": "Manual", "codigo": "MAN-001",
+                 "marca": "Stanley", "status": "Disponível", "tabela": "equipamentos_manuais",
+                 "display_name": "Martelo (ID: 3) - Manual"},
+                {"id": 4, "nome": "Chave de Fenda", "tipo": "Manual", "codigo": "MAN-002",
+                 "marca": "Tramontina", "status": "Disponível", "tabela": "equipamentos_manuais",
+                 "display_name": "Chave de Fenda (ID: 4) - Manual"}
             ]
-            if busca:
+            
+            if busca and busca.strip():
                 return [eq for eq in equipamentos_fallback if busca.lower() in eq['nome'].lower()]
             return equipamentos_fallback
 
@@ -234,14 +273,26 @@ def show_manutencao_page():
             # Busca de equipamentos para manutenção
             st.markdown("**🔍 Buscar Equipamento**")
             search_term = st.text_input("Digite o nome do equipamento:", key="manutencao_search")
-            equipamentos = manager.get_equipamentos_manutencao(search_term)
+            
+            with st.spinner("Carregando equipamentos..."):
+                equipamentos = manager.get_equipamentos_manutencao(search_term)
+            
+            # Mostrar estatísticas
+            if equipamentos:
+                st.success(f"✅ {len(equipamentos)} equipamentos encontrados")
+            else:
+                st.info("ℹ️ Nenhum equipamento encontrado")
             
             if equipamentos:
-                eq_options = {f"{eq['nome']} (ID: {eq['id']}) - {eq['tipo']}": eq for eq in equipamentos}
+                # Usar o display_name criado na função de busca
+                eq_options = {eq.get('display_name', f"{eq.get('nome', 'Sem nome')} (ID: {eq['id']})"): eq for eq in equipamentos}
                 eq_selected = st.selectbox("Equipamento:", list(eq_options.keys()), key="manutencao_select")
                 eq = eq_options[eq_selected] if eq_selected else None
+                
+                if eq:
+                    st.info(f"**Selecionado:** {eq.get('codigo', 'N/A')} - {eq.get('marca', 'N/A')} - Status: {eq.get('status', 'N/A')}")
             else:
-                st.warning("Nenhum equipamento encontrado")
+                st.warning("⚠️ Nenhum equipamento encontrado. Verifique se há equipamentos cadastrados.")
                 eq = None
         
         with col2:
