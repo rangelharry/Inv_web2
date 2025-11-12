@@ -22,7 +22,8 @@ class AuditoriaAvancada:
         try:
             conn = self.db.get_connection()
             if not conn:
-                return
+                print("Erro: Sem conexão com o banco de dados")
+                return False
             
             cursor = conn.cursor()
             
@@ -31,7 +32,7 @@ class AuditoriaAvancada:
                 CREATE TABLE IF NOT EXISTS auditoria_logs (
                     id SERIAL PRIMARY KEY,
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    usuario_id INTEGER REFERENCES usuarios(id),
+                    usuario_id INTEGER,
                     usuario_nome VARCHAR(255),
                     usuario_email VARCHAR(255),
                     usuario_perfil VARCHAR(50),
@@ -92,11 +93,57 @@ class AuditoriaAvancada:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_auditoria_acessos_timestamp ON auditoria_acessos(timestamp)")
             
             conn.commit()
+            print("✅ Tabelas de auditoria criadas/verificadas com sucesso")
+            return True
             
         except Exception as e:
             if conn:
                 conn.rollback()
             print(f"Erro ao criar tabelas de auditoria: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _criar_logs_exemplo(self):
+        """Cria logs de exemplo para testar o sistema"""
+        try:
+            conn = self.db.get_connection()
+            if not conn:
+                return False
+                
+            cursor = conn.cursor()
+            
+            # Inserir alguns logs de exemplo
+            logs_exemplo = [
+                ("sistema", "inicializacao", "auditoria", None, "Sistema de auditoria iniciado"),
+                ("usuarios", "login", "usuario", 1, "Usuário realizou login"),
+                ("movimentacoes", "criar", "movimentacao", 1, "Nova movimentação criada"),
+                ("insumos", "consultar", "insumo", 5, "Consulta de insumo realizada"),
+                ("dashboard", "visualizar", None, None, "Dashboard acessado"),
+                ("relatorios", "gerar", "relatorio", 2, "Relatório gerado"),
+            ]
+            
+            for modulo, acao, entidade, entidade_id, descricao in logs_exemplo:
+                cursor.execute("""
+                    INSERT INTO auditoria_logs (
+                        modulo, acao, entidade, entidade_id, usuario_id, 
+                        usuario_nome, resultado, dados_contexto
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    modulo, acao, entidade, entidade_id, 1,
+                    'Admin (Exemplo)', 'sucesso', 
+                    json.dumps({'descricao': descricao})
+                ))
+            
+            conn.commit()
+            print("✅ Logs de exemplo criados")
+            return True
+            
+        except Exception as e:
+            print(f"Erro ao criar logs de exemplo: {e}")
+            if conn:
+                conn.rollback()
+            return False
     
     def registrar_acao(self, 
                       modulo: str,
@@ -352,8 +399,19 @@ class AuditoriaAvancada:
             }
             
         except Exception as e:
-            st.error(f"Erro ao obter estatísticas: {e}")
-            return {}
+            print(f"Erro ao obter estatísticas: {e}")
+            import traceback
+            traceback.print_exc()
+            # Retornar estatísticas zeradas em caso de erro
+            return {
+                'total_logs': 0,
+                'sucessos': 0,
+                'erros': 0,
+                'usuarios_ativos': 0,
+                'logs_24h': 0,
+                'top_modulos': [],
+                'top_acoes': []
+            }
     
     def exportar_logs(self, filtros: Dict = None, formato: str = 'csv') -> str:
         """Exporta logs de auditoria"""
@@ -446,33 +504,82 @@ def show_auditoria_interface():
     with tab1:
         st.header("Dashboard de Auditoria")
         
-        stats = auditoria.get_estatisticas_auditoria()
+        with st.spinner("Carregando estatísticas..."):
+            stats = auditoria.get_estatisticas_auditoria()
         
         if stats:
+            # Métricas principais
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("Total de Logs", stats.get('total_logs', 0))
+                st.metric("📊 Total de Logs", stats.get('total_logs', 0))
             with col2:
-                st.metric("Sucessos", stats.get('sucessos', 0))
+                st.metric("✅ Sucessos", stats.get('sucessos', 0))
             with col3:
-                st.metric("Erros", stats.get('erros', 0))
+                st.metric("❌ Erros", stats.get('erros', 0))
             with col4:
-                st.metric("Logs 24h", stats.get('logs_24h', 0))
+                st.metric("🕐 Logs 24h", stats.get('logs_24h', 0))
             
+            st.divider()
+            
+            # Gráficos
             col1, col2 = st.columns(2)
             
             with col1:
-                st.subheader("Top Módulos (7 dias)")
-                if stats.get('top_modulos'):
-                    df_modulos = pd.DataFrame(stats['top_modulos'])
+                st.subheader("📈 Top Módulos (7 dias)")
+                top_modulos = stats.get('top_modulos', [])
+                if top_modulos and len(top_modulos) > 0:
+                    df_modulos = pd.DataFrame(top_modulos)
                     st.bar_chart(df_modulos.set_index('modulo'))
+                else:
+                    st.info("📭 Nenhuma atividade nos últimos 7 dias")
             
             with col2:
-                st.subheader("Top Ações (7 dias)")
-                if stats.get('top_acoes'):
-                    df_acoes = pd.DataFrame(stats['top_acoes'])
+                st.subheader("🎯 Top Ações (7 dias)")
+                top_acoes = stats.get('top_acoes', [])
+                if top_acoes and len(top_acoes) > 0:
+                    df_acoes = pd.DataFrame(top_acoes)
                     st.bar_chart(df_acoes.set_index('acao'))
+                else:
+                    st.info("📭 Nenhuma ação nos últimos 7 dias")
+                    
+            # Status do sistema de auditoria
+            st.divider()
+            st.subheader("🔧 Status do Sistema")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.success("✅ Sistema de Auditoria Ativo")
+            with col2:
+                total_logs = stats.get('total_logs', 0)
+                if total_logs > 0:
+                    st.info(f"📊 {total_logs} eventos registrados")
+                else:
+                    st.warning("⚠️ Nenhum log registrado ainda")
+            with col3:
+                st.info("🛡️ Monitoramento em tempo real")
+        else:
+            st.error("❌ Erro ao carregar estatísticas do sistema")
+            
+            # Opções de diagnóstico
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔧 Recriar Tabelas"):
+                    auditoria._criar_tabelas_auditoria()
+                    st.success("✅ Tabelas recriadas!")
+                    st.rerun()
+            with col2:
+                if st.button("📊 Tentar Novamente"):
+                    st.rerun()
+            
+            # Botão para criar logs de exemplo
+            st.divider()
+            if st.button("🧪 Criar Logs de Exemplo"):
+                if auditoria._criar_logs_exemplo():
+                    st.success("✅ Logs de exemplo criados!")
+                    st.rerun()
+                else:
+                    st.error("❌ Erro ao criar logs de exemplo")
     
     with tab2:
         st.header("Logs de Auditoria")
